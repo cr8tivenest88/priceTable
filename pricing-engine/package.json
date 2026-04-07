@@ -1,0 +1,12 @@
+{
+  "name": "pricing-engine",
+  "version": "1.0.0",
+  "description": "Print product pricing engine with admin UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

@@ -1,0 +1,364 @@
+{
+  "finishings": {
+    "no_finish": {
+      "label": "No Finish",
+      "flat": 0,
+      "per_unit": 0
+    },
+    "glossy_lam": {
+      "label": "Glossy Lamination",
+      "flat": 2.5,
+      "per_unit": 0.012
+    },
+    "matte_lam": {
+      "label": "Matte Lamination",
+      "flat": 2.5,
+      "per_unit": 0.012
+    },
+    "soft_touch": {
+      "label": "Soft Touch Lamination",
+      "flat": 4,
+      "per_unit": 0.018
+    },
+    "spot_uv": {
+      "label": "Spot UV",
+      "flat": 6,
+      "per_unit": 0.025
+    },
+    "foil_gold": {
+      "label": "Gold Foil Stamping",
+      "flat": 8,
+      "per_unit": 0.03
+    },
+    "embossing": {
+      "label": "Embossing",
+      "flat": 7,
+      "per_unit": 0.028
+    }
+  },
+  "products": {
+    "business-cards": {
+      "label": "Business Cards",
+      "quantities": [
+        25,
+        50,
+        100,
+        250,
+        500,
+        1000
+      ],
+      "specs": {
+        "material": {
+          "label": "Material",
+          "options": {
+            "14pt-matte": {
+              "label": "14pt Cardstock Matte",
+              "setup_cost": 8,
+              "per_unit_cost": 0.028,
+              "scale_factor": 0.65
+            },
+            "12pt-uncoated": {
+              "label": "12pt Cardstock Uncoated",
+              "setup_cost": 7,
+              "per_unit_cost": 0.024,
+              "scale_factor": 0.65
+            },
+            "triplex-720g": {
+              "label": "Triplex 720g",
+              "setup_cost": 12,
+              "per_unit_cost": 0.045,
+              "scale_factor": 0.65
+            }
+          }
+        },
+        "printing": {
+          "label": "Printing",
+          "options": {
+            "front_only": {
+              "label": "Front Only",
+              "cost_modifier": 0.004
+            },
+            "front_and_back": {
+              "label": "Front and Back",
+              "cost_modifier": 0.008
+            }
+          }
+        },
+        "corners": {
+          "label": "Corners",
+          "options": {
+            "straight": {
+              "label": "Straight Corners",
+              "cost_modifier": 0
+            },
+            "rounded": {
+              "label": "Rounded Corners",
+              "cost_modifier": 0.005
+            },
+            "none": {
+              "label": "No Rounded Corner",
+              "cost_modifier": 0
+            }
+          }
+        },
+        "turnaround": {
+          "label": "turnaround",
+          "options": {
+            "3-days": {
+              "label": "Rush 3 days",
+              "surcharge_pct": 10
+            },
+            "1-day": {
+              "label": "Rush 1 day",
+              "surcharge_pct": 30
+            }
+          }
+        }
+      },
+      "allowed_finishings": [
+        "no_finish",
+        "glossy_lam",
+        "matte_lam"
+      ]
+    },
+    "flyers": {
+      "label": "Flyers",
+      "quantities": [
+        25,
+        50,
+        100,
+        250,
+        500,
+        1000,
+        2500,
+        5000
+      ],
+      "specs": {
+        "material_type": {
+          "label": "Material Type",
+          "options": {
+            "matte": {
+              "label": "Matte",
+              "setup_cost": 6,
+              "per_unit_cost": 0.018,
+              "scale_factor": 0.6
+            },
+            "gloss": {
+              "label": "Gloss",
+              "setup_cost": 7.5,
+              "per_unit_cost": 0.022,
+              "scale_factor": 0.6
+            }
+          }
+        },
+        "material_weight": {
+          "label": "Material Weight",
+          "options": {
+            "60lb": {
+              "label": "60 lb. Paper",
+              "cost_modifier": 0
+            },
+            "80lb": {
+              "label": "80 lb. Paper",
+              "cost_modifier": 0.003
+            },
+            "110lb": {
+              "label": "110 lb. Paper",
+              "cost_modifier": 0.006
+            },
+            "10pt_card": {
+              "label": "10pt Cardstock",
+              "cost_modifier": 0.01
+            },
+            "14pt_card": {
+              "label": "14pt Cardstock",
+              "cost_modifier": 0.012
+            }
+          }
+        },
+        "size": {
+          "label": "Size",
+          "options": {
+            "4x6": {
+              "label": "4",
+              "cost_modifier": 0
+            },
+            "5.5x8.5": {
+              "label": "5.5",
+              "cost_modifier": 0.004
+            },
+            "8.5x11": {
+              "label": "8.5",
+              "cost_modifier": 0.01
+            },
+            "2.5x4": {
+              "label": "2.5",
+              "cost_modifier": -0.002
+            },
+            "3.5x8.5": {
+              "label": "3.5",
+              "cost_modifier": 0.003
+            }
+          }
+        },
+        "printing": {
+          "label": "Printing",
+          "options": {
+            "front_only": {
+              "label": "Colors, Front Only",
+              "cost_modifier": 0
+            },
+            "front_and_back": {
+              "label": "Colors, Front and Back",
+              "cost_modifier": 0.006
+            }
+          }
+        }
+      },
+      "allowed_finishings": [
+        "no_finish",
+        "glossy_lam",
+        "matte_lam",
+        "soft_touch"
+      ]
+    },
+    "stickers": {
+      "label": "Stickers",
+      "quantities": [
+        50,
+        100,
+        250,
+        500,
+        1000
+      ],
+      "specs": {
+        "type": {
+          "label": "Type",
+          "options": {
+            "roll": {
+              "label": "Roll Labels",
+              "setup_cost": 5,
+              "per_unit_cost": 0.014,
+              "scale_factor": 0.58
+            },
+            "single": {
+              "label": "Single Stickers",
+              "setup_cost": 7,
+              "per_unit_cost": 0.018,
+              "scale_factor": 0.58
+            }
+          }
+        },
+        "shape": {
+          "label": "Shape",
+          "options": {
+            "round": {
+              "label": "Round",
+              "cost_modifier": 0
+            },
+            "square": {
+              "label": "Square",
+              "cost_modifier": 0.004
+            },
+            "rectangle": {
+              "label": "Rectangle",
+              "cost_modifier": 0.002
+            },
+            "oval": {
+              "label": "Oval",
+              "cost_modifier": 0.005
+            },
+            "die_cut": {
+              "label": "Die Cut",
+              "cost_modifier": 0.012
+            }
+          }
+        },
+        "material": {
+          "label": "Material",
+          "options": {
+            "glossy_paper": {
+              "label": "Glossy Adhesive Paper",
+              "cost_modifier": 0
+            },
+            "white_vinyl": {
+              "label": "White Vinyl Glossy",
+              "cost_modifier": 0.003
+            },
+            "clear_vinyl": {
+              "label": "Clear Vinyl",
+              "cost_modifier": 0.008
+            },
+            "removable": {
+              "label": "Removable White Paper",
+              "cost_modifier": 0.008
+            },
+            "textured": {
+              "label": "Casablanca Textured Paper",
+              "cost_modifier": 0.01
+            },
+            "silver_metallic": {
+              "label": "Silver Metallic",
+              "cost_modifier": 0.01
+            }
+          }
+        },
+        "print_colour": {
+          "label": "Print Colour",
+          "options": {
+            "colors": {
+              "label": "Colors",
+              "cost_modifier": 0
+            },
+            "black_white": {
+              "label": "Black and White",
+              "cost_modifier": -0.001
+            }
+          }
+        },
+        "size": {
+          "label": "Size",
+          "options": {
+            "1x1": {
+              "label": "1\" × 1\"",
+              "cost_modifier": 0
+            },
+            "1.5x1.5": {
+              "label": "1.5\" × 1.5\"",
+              "cost_modifier": 0.002
+            },
+            "2x2": {
+              "label": "2\" × 2\"",
+              "cost_modifier": 0.004
+            },
+            "2x3": {
+              "label": "2\" × 3\"",
+              "cost_modifier": 0.006
+            },
+            "3x3": {
+              "label": "3\" × 3\"",
+              "cost_modifier": 0.009
+            },
+            "3x4": {
+              "label": "3\" × 4\"",
+              "cost_modifier": 0.012
+            },
+            "4x4": {
+              "label": "4\" × 4\"",
+              "cost_modifier": 0.016
+            },
+            "4x6": {
+              "label": "4\" × 6\"",
+              "cost_modifier": 0.022
+            }
+          }
+        }
+      },
+      "allowed_finishings": [
+        "no_finish",
+        "glossy_lam",
+        "matte_lam"
+      ]
+    }
+  }
+}
