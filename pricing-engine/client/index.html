@@ -5,233 +5,182 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pricing Engine Admin</title>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Editor-specific tweaks */
+    .chip-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip { background: #eef2f7; border: 1px solid #cbd5e1; border-radius: 14px;
+            padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; }
+    .chip button { background: none; border: none; color: var(--danger); cursor: pointer;
+                   font-size: 14px; padding: 0; line-height: 1; }
+    .chip-add { display: flex; gap: 6px; margin-top: 6px; }
+    .chip-add input { flex: 1; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+    .chip-add button { padding: 4px 10px; background: var(--accent); color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .price-grid { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+    .price-grid th, .price-grid td { border: 1px solid var(--border); padding: 4px 6px; text-align: center; }
+    .price-grid thead { background: #f1f5f9; }
+    .price-grid input { width: 70px; padding: 2px 4px; border: 1px solid #cbd5e1; border-radius: 3px; font-size: 12px; text-align: right; }
+    .price-grid td.row-key { background: #f8fafc; text-align: left; font-weight: 500; padding: 6px 8px; }
+    .editor-section { margin-bottom: 24px; }
+    .editor-section h3 { font-size: 14px; margin: 0 0 8px; color: var(--text); }
+    .key-block { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+    .key-block-title { font-weight: 600; font-size: 12px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    .row-actions { display: flex; gap: 8px; align-items: center; }
+    .tier-row, .thick-row, .discount-row { display: grid; gap: 8px; align-items: center; margin-bottom: 6px; }
+    .tier-row     { grid-template-columns: 1fr 1fr auto; }
+    .thick-row    { grid-template-columns: 1fr 1fr 1fr auto; }
+    .discount-row { grid-template-columns: 1fr 1fr auto; }
+    .tier-row input, .thick-row input, .discount-row input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; }
+    .btn-mini { padding: 2px 8px; background: var(--danger); color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; }
+    .global-block { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+    .note { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 12px; border-radius: 4px;
+            font-size: 12px; color: #78350f; margin: 8px 0 12px; line-height: 1.5; }
+    .note strong { color: #78350f; }
+    .note ul { margin: 6px 0 0 18px; }
+    .note code { background: #fde68a; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  </style>
 </head>
 <body>
   <div class="layout">
 
-    <!-- Sidebar -->
     <aside class="sidebar">
       <div class="logo">⚙️ Pricing Admin</div>
       <nav>
         <button class="nav-btn active" data-tab="price-table">Price Table</button>
+        <button class="nav-btn" data-tab="prices">Prices</button>
         <button class="nav-btn" data-tab="products">Products</button>
         <button class="nav-btn" data-tab="finishings">Finishings</button>
+        <button class="nav-btn" data-tab="globals">Globals</button>
       </nav>
-      <div class="sidebar-footer">
-        <button class="help-btn" onclick="openHelpModal()">? How pricing works</button>
-      </div>
     </aside>
 
-    <!-- Main -->
     <main class="main">
 
-      <!-- ── TAB: Price Table ── -->
+      <!-- ── PRICE TABLE TAB ── -->
       <section id="tab-price-table" class="tab active">
         <h1>Price Table Builder</h1>
-
+        <div class="note">
+          <strong>How this works:</strong>
+          <ul>
+            <li>Pick a <strong>product</strong> and (for non-coroplast) a <strong>size</strong>. Generate produces a price table for every variant combo (paper stock, folding, etc.) at that size, across all quantity break points and allowed finishings.</li>
+            <li><strong>Markup %</strong> is applied <em>last</em> — after base cost + add-ons + finishing + turnaround multiplier.</li>
+            <li>Quantities not in the price table are <strong>linearly interpolated</strong> between break points; below the smallest / above the largest they clamp to that endpoint.</li>
+            <li><strong>Coroplast</strong> uses parametric inputs (width, height, thickness, sides, qty) instead of a size dropdown — there are no fixed sizes.</li>
+            <li>This view always uses <code>regular</code> turnaround. To preview a rush price, mentally multiply by the turnaround value from the Globals tab (e.g. sameday ×1.3).</li>
+          </ul>
+        </div>
         <div class="card">
           <div class="form-row">
             <div class="field">
               <label>Product</label>
               <select id="pt-product"></select>
             </div>
+            <div class="field" id="pt-size-field" style="display:none">
+              <label>Size</label>
+              <select id="pt-size"></select>
+            </div>
+            <div class="field">
+              <label>Sides</label>
+              <select id="pt-sides">
+                <option value="1">1 — Single-Sided</option>
+                <option value="2">2 — Double-Sided</option>
+              </select>
+            </div>
             <div class="field">
               <label>Markup %</label>
               <input type="number" id="pt-markup" value="40" min="0" max="500" />
             </div>
-            <div class="field" style="justify-content:flex-end;flex-direction:row;align-items:flex-end;gap:8px">
-              <button class="btn-secondary" id="pt-mode-custom" onclick="setPtMode('custom')">Custom Combo</button>
-              <button class="btn-primary" id="pt-mode-all" onclick="setPtMode('all')">All Combos</button>
-            </div>
           </div>
-
-          <div id="pt-specs" class="form-row"></div>
-
-          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-            <button class="btn-primary" id="pt-generate">Generate Price Table</button>
-            <span id="pt-combo-count" style="font-size:12px;color:var(--muted)"></span>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <button class="btn-primary" id="pt-generate">Generate</button>
+            <button class="btn-secondary" id="pt-export">⬇ Export to Excel</button>
+            <span id="pt-info" style="font-size:12px;color:var(--muted)"></span>
           </div>
         </div>
-
         <div id="pt-result"></div>
       </section>
 
-      <!-- ── TAB: Products ── -->
+      <!-- ── PRICES TAB ── -->
+      <section id="tab-prices" class="tab">
+        <h1>Prices</h1>
+        <div class="note">
+          <strong>Edit price tables here.</strong>
+          <ul>
+            <li>Pick a <strong>product</strong> and a <strong>size</strong>. The grid shows one row per combo (paper, folding, variant, …) × one column per quantity break point.</li>
+            <li>To add a new size, paper stock, or quantity break point, go to the <strong>Products</strong> tab — those are structural settings.</li>
+            <li>Empty cells are allowed. The engine interpolates between filled break points and clamps outside the range.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="form-row">
+            <div class="field"><label>Product</label><select id="pr-product"></select></div>
+            <div class="field"><label>Size</label><select id="pr-size"></select></div>
+          </div>
+        </div>
+        <div id="pr-grid"></div>
+        <div style="margin-top:12px"><button class="btn-primary" id="pr-save">Save Prices</button></div>
+      </section>
+
+      <!-- ── PRODUCTS TAB ── -->
       <section id="tab-products" class="tab">
         <div class="prod-layout">
-
-          <!-- Left: product list -->
           <div class="prod-list-panel">
             <div class="prod-list-header">
               <span class="panel-title">Products</span>
-              <button class="btn-primary btn-sm" id="prod-new">+ New</button>
             </div>
             <ul id="prod-list"></ul>
           </div>
-
-          <!-- Right: editor -->
           <div class="prod-editor-panel" id="prod-editor" style="display:none">
-
-            <!-- Header -->
             <div class="prod-editor-header">
               <div>
-                <div class="prod-editor-title" id="prod-editor-title">New Product</div>
+                <div class="prod-editor-title" id="prod-editor-title"></div>
                 <div class="prod-editor-sub" id="prod-editor-sub"></div>
               </div>
               <div class="actions" style="margin:0">
                 <button class="btn-primary" id="prod-save">Save</button>
-                <button class="btn-danger" id="prod-delete">Delete</button>
               </div>
             </div>
-
-            <!-- Inner tabs -->
-            <div class="inner-tabs">
-              <button class="inner-tab active" data-itab="basics">Basics</button>
-              <button class="inner-tab" data-itab="specs">Spec Groups</button>
-              <button class="inner-tab" data-itab="finishings">Finishings</button>
-            </div>
-
-            <!-- Basics -->
-            <div class="inner-tab-content active" id="itab-basics">
-              <div class="card">
-                <div class="form-row">
-                  <div class="field">
-                    <label>Product Key <span class="hint">no spaces, e.g. business-cards</span></label>
-                    <input type="text" id="prod-key" placeholder="business-cards" />
-                  </div>
-                  <div class="field">
-                    <label>Display Name</label>
-                    <input type="text" id="prod-label" placeholder="Business Cards" />
-                  </div>
-                </div>
-                <div class="field" style="max-width:400px">
-                  <label>Quantities <span class="hint">comma separated</span></label>
-                  <input type="text" id="prod-quantities" placeholder="25,50,100,250,500,1000" />
-                </div>
-              </div>
-            </div>
-
-            <!-- Spec Groups -->
-            <div class="inner-tab-content" id="itab-specs">
-              <div class="spec-help">
-                <strong>Spec Groups</strong> are the options a customer picks — Material, Size, Printing, Corners, etc.<br><br>
-                Each group has <strong>options</strong>. An option can be one of three types:<br><br>
-                <strong>Base (curve)</strong> — the primary material/stock. Uses a power curve to calculate cost:
-                <code>cost = setup_cost + per_unit_cost × qty^scale_factor</code>
-                Only your first spec group (usually Material) should have Base options. The base already includes the default print side (front only).<br><br>
-                <strong>Modifier</strong> — a flat per-unit add-on: <code>extra = cost_modifier × qty</code>.
-                Use this for anything that adds a fixed cost per piece — rounded corners ($0.005/unit), double-sided printing ($0.008/unit), larger size ($0.010/unit).
-                A $0 modifier is valid — it means "no extra cost" but keeps the option explicit in the table (e.g. Front Only = $0, Straight Corners = $0).<br><br>
-                <strong>Surcharge</strong> — a percentage of the base cost: <code>extra = base_cost × pct%</code>.
-                Use this for job-level premiums like rush fees or special handling that scale with the job value, not the unit count.
-              </div>
-              <div id="prod-specs-list"></div>
-              <button class="btn-secondary" id="prod-add-spec">+ Add Spec Group</button>
-            </div>
-
-            <!-- Finishings -->
-            <div class="inner-tab-content" id="itab-finishings">
-              <div class="spec-help">
-                Select which <strong>finishings</strong> are available for this product.
-                Finishings are managed globally in the Finishings tab.
-              </div>
-              <div id="prod-finishings-check" class="checkbox-grid"></div>
-            </div>
-
+            <div id="prod-editor-body"></div>
           </div>
-
-          <!-- Empty state -->
           <div class="prod-empty" id="prod-empty">
-            <div>👈 Select a product or create a new one</div>
+            <div>👈 Pick a product to edit</div>
           </div>
-
         </div>
       </section>
 
-      <!-- ── TAB: Finishings ── -->
+      <!-- ── FINISHINGS TAB ── -->
       <section id="tab-finishings" class="tab">
         <h1>Finishings</h1>
-
         <div class="toolbar">
           <select id="fin-select"></select>
           <button class="btn-primary" id="fin-new">+ New Finishing</button>
         </div>
-
         <div id="fin-editor" class="card" style="display:none">
           <div class="form-row">
-            <div class="field">
-              <label>Key (no spaces)</label>
-              <input type="text" id="fin-key" />
-            </div>
-            <div class="field">
-              <label>Label</label>
-              <input type="text" id="fin-label" />
-            </div>
+            <div class="field"><label>Key</label><input type="text" id="fin-key" /></div>
+            <div class="field"><label>Label</label><input type="text" id="fin-label" /></div>
           </div>
           <div class="form-row">
-            <div class="field">
-              <label>Flat Cost ($)</label>
-              <input type="number" id="fin-flat" step="0.01" min="0" />
-            </div>
-            <div class="field">
-              <label>Per Unit Cost ($)</label>
-              <input type="number" id="fin-per-unit" step="0.001" min="0" />
-            </div>
+            <div class="field"><label>Flat Cost ($)</label><input type="number" id="fin-flat" step="0.01" min="0" /></div>
+            <div class="field"><label>Per Unit ($)</label><input type="number" id="fin-per-unit" step="0.001" min="0" /></div>
           </div>
           <div class="actions">
-            <button class="btn-primary" id="fin-save">Save Finishing</button>
-            <button class="btn-danger" id="fin-delete">Delete Finishing</button>
+            <button class="btn-primary" id="fin-save">Save</button>
+            <button class="btn-danger" id="fin-delete">Delete</button>
           </div>
         </div>
+      </section>
+
+      <!-- ── GLOBALS TAB ── -->
+      <section id="tab-globals" class="tab">
+        <h1>Globals</h1>
+        <div id="globals-body"></div>
+        <button class="btn-primary" id="globals-save">Save Globals</button>
       </section>
 
     </main>
   </div>
 
   <div id="toast" class="toast"></div>
-
-  <!-- ── Scale Factor Modal ── -->
-  <div id="scale-modal-overlay" class="modal-overlay" onclick="closeScaleModal()">
-    <div class="modal" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <span>What is Scale Factor?</span>
-        <button class="modal-close" onclick="closeScaleModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <p>Scale factor controls how fast your cost grows as quantity increases. It creates the <strong>bulk discount curve</strong> — higher quantities cost more in total, but less per unit.</p>
-
-        <div class="modal-formula">
-          print cost = setup_cost + per_unit_cost × qty <sup>scale_factor</sup>
-        </div>
-
-        <p>The lower the scale factor, the steeper the bulk discount:</p>
-
-        <table class="modal-table">
-          <thead>
-            <tr><th>Scale Factor</th><th>Behaviour</th><th>Good for</th></tr>
-          </thead>
-          <tbody>
-            <tr><td><strong>0.50</strong></td><td>Steep discount — cost barely grows with qty</td><td>Digital / low marginal cost</td></tr>
-            <tr><td><strong>0.65</strong></td><td>Moderate discount — typical print product</td><td>Business cards, flyers</td></tr>
-            <tr><td><strong>0.80</strong></td><td>Mild discount — cost grows close to linearly</td><td>Premium / labour-heavy items</td></tr>
-            <tr><td><strong>1.00</strong></td><td>No discount — fully linear cost</td><td>Custom / one-off work</td></tr>
-          </tbody>
-        </table>
-
-        <p class="modal-example-title">Example with setup=$8, per_unit=$0.028, scale=0.65</p>
-        <table class="modal-table">
-          <thead><tr><th>Qty</th><th>Print Cost</th><th>Cost / unit</th></tr></thead>
-          <tbody id="scale-preview-rows"></tbody>
-        </table>
-
-        <div class="modal-slider-row">
-          <label>Try it — Scale Factor: <strong id="scale-val-display">0.65</strong></label>
-          <input type="range" id="scale-slider" min="0.40" max="1.00" step="0.05" value="0.65" oninput="updateScalePreview(this.value)" />
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script src="app.js"></script>
 </body>
 </html>

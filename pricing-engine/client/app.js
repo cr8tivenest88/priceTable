@@ -1,13 +1,16 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 let config = {}
+let currentProdKey = null
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   config = await api('GET', '/api/config')
   initNav()
   initPriceTable()
+  initPrices()
   initProducts()
   initFinishings()
+  initGlobals()
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
@@ -24,7 +27,7 @@ async function api(method, url, body) {
 
 async function saveConfig() {
   await api('PUT', '/api/config', config)
-  toast('Config saved')
+  toast('Saved')
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
@@ -48,634 +51,6 @@ function toast(msg, type = 'ok') {
   setTimeout(() => el.classList.remove('show'), 2500)
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PRICE TABLE TAB
-// ─────────────────────────────────────────────────────────────────────────────
-let ptMode = 'all'
-
-function initPriceTable() {
-  const productSel = document.getElementById('pt-product')
-  populateSelect(productSel, Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
-
-  productSel.addEventListener('change', () => { renderSpecSelectors(); updateComboCount() })
-  document.getElementById('pt-markup').addEventListener('input', updateComboCount)
-  document.getElementById('pt-generate').addEventListener('click', generatePriceTable)
-
-  setPtMode('all')
-}
-
-function setPtMode(mode) {
-  ptMode = mode
-  document.getElementById('pt-mode-custom').className = mode === 'custom' ? 'btn-primary' : 'btn-secondary'
-  document.getElementById('pt-mode-all').className    = mode === 'all'    ? 'btn-primary' : 'btn-secondary'
-  document.getElementById('pt-specs').style.display   = mode === 'custom' ? '' : 'none'
-  renderSpecSelectors()
-  updateComboCount()
-}
-
-function updateComboCount() {
-  const productKey = document.getElementById('pt-product').value
-  const product    = config.products[productKey]
-  if (!product || ptMode !== 'all') { document.getElementById('pt-combo-count').textContent = ''; return }
-
-  const specCounts   = Object.values(product.specs).map(s => Object.keys(s.options).length)
-  const combos       = specCounts.reduce((a, b) => a * b, 1)
-  const finishings   = product.allowed_finishings.length
-  const qtys         = product.quantities.length
-  const total        = combos * finishings * qtys
-  document.getElementById('pt-combo-count').textContent =
-    `${combos} spec combos × ${finishings} finishings × ${qtys} qty tiers = ${total} rows`
-}
-
-function renderSpecSelectors() {
-  const productKey = document.getElementById('pt-product').value
-  const product    = config.products[productKey]
-  const container  = document.getElementById('pt-specs')
-  container.innerHTML = ''
-
-  if (!product || ptMode !== 'custom') return
-
-  for (const [specKey, specDef] of Object.entries(product.specs)) {
-    const field = document.createElement('div')
-    field.className = 'field'
-    field.innerHTML = `<label>${specDef.label}</label>`
-
-    const sel = document.createElement('select')
-    sel.id = `pt-spec-${specKey}`
-    for (const [optKey, optDef] of Object.entries(specDef.options)) {
-      const o = document.createElement('option')
-      o.value = optKey
-      o.textContent = optDef.label
-      sel.appendChild(o)
-    }
-    field.appendChild(sel)
-    container.appendChild(field)
-  }
-}
-
-async function generatePriceTable() {
-  const productKey = document.getElementById('pt-product').value
-  const markup     = parseFloat(document.getElementById('pt-markup').value) || 0
-
-  try {
-    if (ptMode === 'all') {
-      document.getElementById('pt-generate').textContent = 'Generating...'
-      const rows = await api('POST', '/api/all-combos', { product: productKey, markup })
-      renderAllCombosTable(rows)
-    } else {
-      const product = config.products[productKey]
-      const specs = {}
-      for (const specKey of Object.keys(product.specs)) {
-        specs[specKey] = document.getElementById(`pt-spec-${specKey}`).value
-      }
-      const table = await api('POST', '/api/price-table', { product: productKey, specs, markup })
-      renderPriceTable(table, productKey, markup)
-    }
-  } catch (e) {
-    toast(e.message, 'err')
-  } finally {
-    document.getElementById('pt-generate').textContent = 'Generate Price Table'
-  }
-}
-
-function renderPriceTable(table, productKey, markup) {
-  const finishingKeys = Object.keys(table[0].finishings)
-  const result = document.getElementById('pt-result')
-
-  // Build two views: sell price table + cost breakdown
-  let html = `
-    <div class="tab-switcher">
-      <button class="tab-btn active" onclick="switchView('sell', this)">Sell Price</button>
-      <button class="tab-btn" onclick="switchView('unit', this)">Unit Price</button>
-      <button class="tab-btn" onclick="switchView('cost', this)">Cost Breakdown</button>
-    </div>
-  `
-
-  // ── Sell price table ──
-  html += `<div id="view-sell" class="price-table-wrap">`
-  html += `<table><thead><tr><th>QTY</th>`
-  for (const fk of finishingKeys) {
-    html += `<th>${config.finishings[fk].label}</th>`
-  }
-  html += `</tr></thead><tbody>`
-  for (const row of table) {
-    html += `<tr><td><strong>${row.qty} units</strong></td>`
-    for (const fk of finishingKeys) {
-      const p = row.finishings[fk]
-      html += `<td><span class="sell">$${p.sellPrice}</span><br><span class="unit">$${p.unitSellPrice}/unit</span></td>`
-    }
-    html += `</tr>`
-  }
-  html += `</tbody></table></div>`
-
-  // ── Unit price table ──
-  html += `<div id="view-unit" class="price-table-wrap" style="display:none">`
-  html += `<table><thead><tr><th>QTY</th>`
-  for (const fk of finishingKeys) {
-    html += `<th>${config.finishings[fk].label}</th>`
-  }
-  html += `</tr></thead><tbody>`
-  for (const row of table) {
-    html += `<tr><td><strong>${row.qty} units</strong></td>`
-    for (const fk of finishingKeys) {
-      const p = row.finishings[fk]
-      html += `<td class="sell">$${p.unitSellPrice}</td>`
-    }
-    html += `</tr>`
-  }
-  html += `</tbody></table></div>`
-
-  // ── Cost breakdown (per finishing) ──
-  html += `<div id="view-cost" style="display:none">`
-  for (const fk of finishingKeys) {
-    html += `<h3>${config.finishings[fk].label} <span class="badge badge-blue">${markup}% markup</span></h3>`
-    html += `<div class="price-table-wrap"><table>
-      <thead><tr>
-        <th>QTY</th>
-        <th>Base Cost</th>
-        <th>Addon Cost</th>
-        <th>Finish Cost</th>
-        <th>Total Cost</th>
-        <th>Sell Price</th>
-        <th>Unit Sell</th>
-      </tr></thead><tbody>`
-    for (const row of table) {
-      const p = row.finishings[fk]
-      html += `<tr>
-        <td><strong>${p.qty}</strong></td>
-        <td class="cost">$${p.baseCost}</td>
-        <td class="cost">$${p.addonCost}</td>
-        <td class="cost">$${p.finishCost}</td>
-        <td class="cost"><strong>$${p.totalCost}</strong></td>
-        <td class="sell">$${p.sellPrice}</td>
-        <td class="sell">$${p.unitSellPrice}</td>
-      </tr>`
-    }
-    html += `</tbody></table></div>`
-  }
-  html += `</div>`
-
-  result.innerHTML = html
-}
-
-function renderAllCombosTable(rows) {
-  const result     = document.getElementById('pt-result')
-  if (!rows.length) { result.innerHTML = '<p>No rows generated.</p>'; return }
-
-  const productKey    = document.getElementById('pt-product').value
-  const productCfg    = config.products[productKey]
-  const specKeys      = Object.keys(rows[0].specs)
-  const finishingKeys = [...new Set(rows.map(r => r.finishing))]
-  const qtyValues     = [...new Set(rows.map(r => r.qty))]
-  const specOptions   = {}
-  for (const sk of specKeys) specOptions[sk] = [...new Set(rows.map(r => r.specs[sk]))]
-
-  const specLabel = sk => productCfg?.specs[sk]?.label ?? sk
-  const optLabel  = (sk, v) => productCfg?.specs[sk]?.options[v]?.label ?? v
-
-  function buildFilters(total) {
-    let html = `<div class="combo-filters card"><div class="form-row" style="margin:0;flex-wrap:wrap;gap:12px;align-items:flex-end">`
-    for (const sk of specKeys) {
-      html += `<div class="field" style="min-width:140px">
-        <label>${specLabel(sk)}</label>
-        <select id="cf-${sk}" onchange="applyComboFilters()">
-          <option value="">All</option>
-          ${specOptions[sk].map(v => `<option value="${v}">${optLabel(sk, v)}</option>`).join('')}
-        </select>
-      </div>`
-    }
-    html += `
-      <div class="field" style="min-width:140px">
-        <label>Finishing</label>
-        <select id="cf-finishing" onchange="applyComboFilters()">
-          <option value="">All</option>
-          ${finishingKeys.map(f => `<option value="${f}">${config.finishings[f]?.label ?? f}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field" style="min-width:100px">
-        <label>Qty</label>
-        <select id="cf-qty" onchange="applyComboFilters()">
-          <option value="">All</option>
-          ${qtyValues.map(q => `<option value="${q}">${q}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label>&nbsp;</label>
-        <span id="cf-count" style="font-size:12px;color:var(--muted);padding:8px 0">${total} rows</span>
-      </div>`
-    html += `</div></div>`
-    return html
-  }
-
-  window._allComboRows     = rows
-  window._allComboSpecKeys = specKeys
-  result.innerHTML = buildFilters(rows.length) + `<div id="combo-table">${buildComboTable(rows, specKeys)}</div>`
-}
-
-function buildComboTable(data, specKeys) {
-  const productKey = document.getElementById('pt-product').value
-  const productCfg = config.products[productKey]
-  const specLabel  = sk => productCfg?.specs[sk]?.label ?? sk
-  const optLabel   = (sk, v) => productCfg?.specs[sk]?.options[v]?.label ?? v
-
-  if (!data.length) return `<p style="color:var(--muted);padding:16px">No rows match the filters.</p>`
-
-  let html = `<div class="price-table-wrap"><table><thead><tr>`
-  for (const sk of specKeys) html += `<th>${specLabel(sk)}</th>`
-  html += `<th>Finishing</th><th>Qty</th><th>Base Cost</th><th>Addon Cost</th><th>Surcharge</th><th>Finish Cost</th><th>Total Cost</th><th>Sell Price</th><th>Unit Sell</th></tr></thead><tbody>`
-
-  for (const r of data) {
-    html += `<tr>`
-    for (const sk of specKeys) html += `<td style="font-size:12px">${optLabel(sk, r.specs[sk])}</td>`
-    html += `
-      <td><span class="badge badge-blue">${r.finishingLabel}</span></td>
-      <td><strong>${r.qty}</strong></td>
-      <td class="cost">$${r.baseCost}</td>
-      <td class="cost">$${r.addonCost}</td>
-      <td class="cost">$${r.surchargeCost ?? 0}</td>
-      <td class="cost">$${r.finishCost}</td>
-      <td class="cost"><strong>$${r.totalCost}</strong></td>
-      <td class="sell">$${r.sellPrice}</td>
-      <td class="sell">$${r.unitSellPrice}</td>
-    </tr>`
-  }
-  return html + `</tbody></table></div>`
-}
-
-window.applyComboFilters = function () {
-  const rows     = window._allComboRows || []
-  const specKeys = window._allComboSpecKeys || Object.keys(rows[0]?.specs || {})
-  let filtered   = rows
-
-  for (const sk of specKeys) {
-    const val = document.getElementById(`cf-${sk}`)?.value
-    if (val) filtered = filtered.filter(r => r.specs[sk] === val)
-  }
-  const fin = document.getElementById('cf-finishing')?.value
-  if (fin) filtered = filtered.filter(r => r.finishing === fin)
-  const qty = document.getElementById('cf-qty')?.value
-  if (qty) filtered = filtered.filter(r => String(r.qty) === qty)
-
-  document.getElementById('cf-count').textContent = `${filtered.length} rows`
-  document.getElementById('combo-table').innerHTML = buildComboTable(filtered, specKeys)
-}
-
-function switchView(view, btn) {
-  document.querySelectorAll('#pt-result .tab-btn').forEach(b => b.classList.remove('active'))
-  btn.classList.add('active')
-  document.getElementById('view-sell').style.display = view === 'sell' ? '' : 'none'
-  document.getElementById('view-unit').style.display = view === 'unit' ? '' : 'none'
-  document.getElementById('view-cost').style.display = view === 'cost' ? '' : 'none'
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PRODUCTS TAB
-// ─────────────────────────────────────────────────────────────────────────────
-let currentProdKey = null
-
-function initProducts() {
-  renderProductList()
-
-  document.getElementById('prod-new').addEventListener('click', newProduct)
-  document.getElementById('prod-add-spec').addEventListener('click', addSpecGroup)
-  document.getElementById('prod-save').addEventListener('click', saveProduct)
-  document.getElementById('prod-delete').addEventListener('click', deleteProduct)
-
-  // Inner tabs
-  document.querySelectorAll('.inner-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.inner-tab').forEach(b => b.classList.remove('active'))
-      document.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'))
-      btn.classList.add('active')
-      document.getElementById(`itab-${btn.dataset.itab}`).classList.add('active')
-    })
-  })
-}
-
-function renderProductList() {
-  const list = document.getElementById('prod-list')
-  list.innerHTML = ''
-  for (const [key, prod] of Object.entries(config.products)) {
-    const li = document.createElement('li')
-    li.dataset.key = key
-    li.innerHTML = `
-      <span class="list-label">${prod.label}</span>
-      <span class="list-sub">${prod.quantities.length} qty tiers · ${prod.allowed_finishings.length} finishings</span>
-    `
-    li.addEventListener('click', () => openProduct(key))
-    list.appendChild(li)
-  }
-}
-
-function openProduct(key) {
-  currentProdKey = key
-  const prod = config.products[key]
-
-  // Highlight list item
-  document.querySelectorAll('#prod-list li').forEach(li => li.classList.toggle('active', li.dataset.key === key))
-
-  document.getElementById('prod-editor-title').textContent = prod.label
-  document.getElementById('prod-editor-sub').textContent   = `key: ${key}`
-  document.getElementById('prod-key').value        = key
-  document.getElementById('prod-label').value      = prod.label
-  document.getElementById('prod-quantities').value = prod.quantities.join(', ')
-
-  renderSpecsList(prod.specs || {})
-  renderFinishingCheckboxes(prod.allowed_finishings || [])
-
-  document.getElementById('prod-empty').style.display  = 'none'
-  document.getElementById('prod-editor').style.display = 'flex'
-
-  // Reset to basics tab
-  document.querySelectorAll('.inner-tab').forEach(b => b.classList.remove('active'))
-  document.querySelectorAll('.inner-tab-content').forEach(c => c.classList.remove('active'))
-  document.querySelector('.inner-tab[data-itab="basics"]').classList.add('active')
-  document.getElementById('itab-basics').classList.add('active')
-}
-
-function newProduct() {
-  currentProdKey = null
-  document.querySelectorAll('#prod-list li').forEach(li => li.classList.remove('active'))
-
-  document.getElementById('prod-editor-title').textContent = 'New Product'
-  document.getElementById('prod-editor-sub').textContent   = ''
-  document.getElementById('prod-key').value        = ''
-  document.getElementById('prod-label').value      = ''
-  document.getElementById('prod-quantities').value = '25, 50, 100, 250, 500, 1000'
-
-  renderSpecsList({})
-  renderFinishingCheckboxes([])
-
-  document.getElementById('prod-empty').style.display  = 'none'
-  document.getElementById('prod-editor').style.display = 'flex'
-}
-
-// ── Spec groups ───────────────────────────────────────────────────────────────
-function renderSpecsList(specs) {
-  const container = document.getElementById('prod-specs-list')
-  container.innerHTML = ''
-  for (const [specKey, specDef] of Object.entries(specs)) {
-    container.appendChild(buildSpecGroupEl(specKey, specDef))
-  }
-}
-
-function addSpecGroup() {
-  document.getElementById('prod-specs-list').appendChild(buildSpecGroupEl('', { label: '', options: {} }))
-}
-
-function buildSpecGroupEl(specKey, specDef) {
-  const wrap = document.createElement('div')
-  wrap.className = 'spec-group'
-
-  wrap.innerHTML = `
-    <div class="spec-group-header">
-      <div class="form-row" style="margin:0;flex:1;gap:12px">
-        <div class="field">
-          <label>Group Key <span class="hint">e.g. material</span></label>
-          <input class="sg-key" type="text" value="${specKey}" placeholder="material" />
-        </div>
-        <div class="field">
-          <label>Display Label</label>
-          <input class="sg-label" type="text" value="${specDef.label || ''}" placeholder="Material" />
-        </div>
-      </div>
-      <button class="btn-icon" title="Remove group" onclick="this.closest('.spec-group').remove()">🗑</button>
-    </div>
-    <div class="spec-group-body">
-      <table class="spec-options-table">
-        <thead>
-          <tr>
-            <th>Option Key</th>
-            <th>Label</th>
-            <th>Type</th>
-            <th>Cost Fields</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody class="sg-options"></tbody>
-      </table>
-      <button class="btn-secondary sg-add-opt">+ Add Option</button>
-    </div>
-  `
-
-  const tbody = wrap.querySelector('.sg-options')
-  for (const [optKey, optDef] of Object.entries(specDef.options || {})) {
-    tbody.appendChild(buildOptionRow(optKey, optDef))
-  }
-
-  wrap.querySelector('.sg-add-opt').addEventListener('click', () => {
-    tbody.appendChild(buildOptionRow('', {}))
-  })
-
-  return wrap
-}
-
-function buildOptionRow(optKey, optDef) {
-  const tr = document.createElement('tr')
-  const isBase = optDef.setup_cost !== undefined
-
-  tr.innerHTML = `
-    <td><input class="opt-key" type="text" value="${optKey}" placeholder="14pt-matte" style="width:110px" /></td>
-    <td><input class="opt-label" type="text" value="${optDef.label || ''}" placeholder="14pt Matte" style="width:140px" /></td>
-    <td>
-      <select class="opt-type" style="width:130px">
-        <option value="modifier" ${!isBase ? 'selected' : ''}>Modifier</option>
-        <option value="base" ${isBase ? 'selected' : ''}>Base (curve)</option>
-        <option value="surcharge" ${optDef.surcharge_pct !== undefined ? 'selected' : ''}>Surcharge %</option>
-      </select>
-    </td>
-    <td class="opt-fields"></td>
-    <td><button class="btn-icon" onclick="this.closest('tr').remove()">✕</button></td>
-  `
-
-  const fieldsEl = tr.querySelector('.opt-fields')
-  const typeEl   = tr.querySelector('.opt-type')
-
-  function renderFields() {
-    if (typeEl.value === 'base') {
-      fieldsEl.innerHTML = `
-        <div class="base-fields">
-          <div class="field"><label>Setup $</label><input class="opt-setup" type="number" step="0.01" value="${optDef.setup_cost ?? 8}" /></div>
-          <div class="field"><label>Per Unit $</label><input class="opt-perunit" type="number" step="0.001" value="${optDef.per_unit_cost ?? 0.028}" /></div>
-          <div class="field">
-            <label>Scale <button class="info-btn" type="button" onclick="openScaleModal()">?</button></label>
-            <input class="opt-scale" type="number" step="0.05" min="0.40" max="1.00" value="${optDef.scale_factor ?? 0.65}" />
-          </div>
-        </div>
-      `
-    } else if (typeEl.value === 'surcharge') {
-      fieldsEl.innerHTML = `
-        <div class="field"><label>Surcharge %</label><input class="opt-surcharge" type="number" step="0.5" min="0" value="${optDef.surcharge_pct ?? 10}" style="width:90px" /></div>
-      `
-    } else {
-      fieldsEl.innerHTML = `
-        <div class="field"><label>$ / unit add-on</label><input class="opt-modifier" type="number" step="0.001" value="${optDef.cost_modifier ?? 0}" style="width:90px" /></div>
-      `
-    }
-  }
-
-  typeEl.addEventListener('change', renderFields)
-  renderFields()
-  return tr
-}
-
-function renderFinishingCheckboxes(selected) {
-  const container = document.getElementById('prod-finishings-check')
-  container.innerHTML = ''
-  for (const [fk, fv] of Object.entries(config.finishings)) {
-    const lbl = document.createElement('label')
-    lbl.innerHTML = `<input type="checkbox" value="${fk}" ${selected.includes(fk) ? 'checked' : ''} /> ${fv.label}`
-    container.appendChild(lbl)
-  }
-}
-
-// ── Save / Delete ─────────────────────────────────────────────────────────────
-function saveProduct() {
-  const newKey = document.getElementById('prod-key').value.trim()
-  if (!newKey) { toast('Product key is required', 'err'); return }
-
-  const quantities = document.getElementById('prod-quantities').value
-    .split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-
-  const specs = {}
-  document.querySelectorAll('#prod-specs-list .spec-group').forEach(sg => {
-    const specKey   = sg.querySelector('.sg-key').value.trim()
-    const specLabel = sg.querySelector('.sg-label').value.trim()
-    if (!specKey) return
-
-    const options = {}
-    sg.querySelectorAll('.sg-options tr').forEach(tr => {
-      const optKey   = tr.querySelector('.opt-key').value.trim()
-      const optLabel = tr.querySelector('.opt-label').value.trim()
-      const type     = tr.querySelector('.opt-type').value
-      if (!optKey) return
-
-      options[optKey] = type === 'base' ? {
-        label:         optLabel,
-        setup_cost:    parseFloat(tr.querySelector('.opt-setup').value),
-        per_unit_cost: parseFloat(tr.querySelector('.opt-perunit').value),
-        scale_factor:  parseFloat(tr.querySelector('.opt-scale').value),
-      } : type === 'surcharge' ? {
-        label:        optLabel,
-        surcharge_pct: parseFloat(tr.querySelector('.opt-surcharge').value),
-      } : {
-        label:         optLabel,
-        cost_modifier: parseFloat(tr.querySelector('.opt-modifier').value),
-      }
-    })
-
-    specs[specKey] = { label: specLabel, options }
-  })
-
-  const allowed_finishings = [...document.querySelectorAll('#prod-finishings-check input:checked')].map(i => i.value)
-
-  if (currentProdKey && currentProdKey !== newKey) delete config.products[currentProdKey]
-
-  config.products[newKey] = {
-    label: document.getElementById('prod-label').value.trim(),
-    quantities,
-    specs,
-    allowed_finishings,
-  }
-
-  saveConfig().then(() => {
-    currentProdKey = newKey
-    renderProductList()
-    document.querySelectorAll('#prod-list li').forEach(li => li.classList.toggle('active', li.dataset.key === newKey))
-    document.getElementById('prod-editor-title').textContent = config.products[newKey].label
-    document.getElementById('prod-editor-sub').textContent   = `key: ${newKey}`
-    populateSelect(document.getElementById('pt-product'),
-      Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
-    renderSpecSelectors()
-  })
-}
-
-function deleteProduct() {
-  if (!currentProdKey || !confirm(`Delete "${currentProdKey}"?`)) return
-  delete config.products[currentProdKey]
-  currentProdKey = null
-  saveConfig().then(() => {
-    renderProductList()
-    document.getElementById('prod-editor').style.display = 'none'
-    document.getElementById('prod-empty').style.display  = 'flex'
-  })
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FINISHINGS TAB
-// ─────────────────────────────────────────────────────────────────────────────
-function initFinishings() {
-  refreshFinishingSelect()
-
-  document.getElementById('fin-select').addEventListener('change', loadFinishing)
-  document.getElementById('fin-new').addEventListener('click', newFinishing)
-  document.getElementById('fin-save').addEventListener('click', saveFinishing)
-  document.getElementById('fin-delete').addEventListener('click', deleteFinishing)
-}
-
-function refreshFinishingSelect() {
-  const sel = document.getElementById('fin-select')
-  populateSelect(sel, [
-    { value: '', label: '— select a finishing —' },
-    ...Object.entries(config.finishings).map(([k, v]) => ({ value: k, label: v.label }))
-  ])
-  document.getElementById('fin-editor').style.display = 'none'
-}
-
-function loadFinishing() {
-  const key = document.getElementById('fin-select').value
-  if (!key) { document.getElementById('fin-editor').style.display = 'none'; return }
-
-  const fin = config.finishings[key]
-  document.getElementById('fin-key').value      = key
-  document.getElementById('fin-label').value    = fin.label
-  document.getElementById('fin-flat').value     = fin.flat
-  document.getElementById('fin-per-unit').value = fin.per_unit
-  document.getElementById('fin-editor').style.display = 'block'
-}
-
-function newFinishing() {
-  document.getElementById('fin-select').value = ''
-  document.getElementById('fin-key').value      = ''
-  document.getElementById('fin-label').value    = ''
-  document.getElementById('fin-flat').value     = '0'
-  document.getElementById('fin-per-unit').value = '0'
-  document.getElementById('fin-editor').style.display = 'block'
-}
-
-function saveFinishing() {
-  const oldKey = document.getElementById('fin-select').value
-  const newKey = document.getElementById('fin-key').value.trim()
-  if (!newKey) { toast('Finishing key is required', 'err'); return }
-
-  if (oldKey && oldKey !== newKey) delete config.finishings[oldKey]
-
-  config.finishings[newKey] = {
-    label:    document.getElementById('fin-label').value.trim(),
-    flat:     parseFloat(document.getElementById('fin-flat').value),
-    per_unit: parseFloat(document.getElementById('fin-per-unit').value),
-  }
-
-  saveConfig().then(() => {
-    refreshFinishingSelect()
-    document.getElementById('fin-select').value = newKey
-    loadFinishing()
-    renderFinishingCheckboxes(
-      config.products[document.getElementById('prod-select').value]?.allowed_finishings || []
-    )
-  })
-}
-
-function deleteFinishing() {
-  const key = document.getElementById('fin-select').value
-  if (!key || !confirm(`Delete finishing "${key}"?`)) return
-  delete config.finishings[key]
-  saveConfig().then(() => refreshFinishingSelect())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
 function populateSelect(sel, items) {
   sel.innerHTML = ''
   for (const item of items) {
@@ -686,44 +61,946 @@ function populateSelect(sel, items) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PRICE TABLE TAB — pick product → pick size → generate all combos for that size
+// ─────────────────────────────────────────────────────────────────────────────
+function initPriceTable() {
+  const productSel = document.getElementById('pt-product')
+  populateSelect(productSel, Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
+  productSel.addEventListener('change', onProductChange)
+  document.getElementById('pt-generate').addEventListener('click', generate)
+  document.getElementById('pt-export').addEventListener('click', exportXlsx)
+  onProductChange()
+}
+
+async function exportXlsx() {
+  const key  = document.getElementById('pt-product').value
+  const prod = config.products[key]
+  const markup = parseFloat(document.getElementById('pt-markup').value) || 0
+  const sides  = parseInt(document.getElementById('pt-sides').value) || 1
+  const size = document.getElementById('pt-size').value
+  try {
+    const res = await fetch('/api/export-xlsx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: key, size, sides, markup }),
+    })
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${prod.label}-${size}-${sides}sided.xlsx`.replace(/[^a-z0-9.-]+/gi, '_')
+    document.body.appendChild(a); a.click()
+    a.remove(); URL.revokeObjectURL(url)
+    toast('Downloaded')
+  } catch (e) {
+    toast(e.message, 'err')
+  }
+}
+
+function onProductChange() {
+  const key = document.getElementById('pt-product').value
+  const prod = config.products[key]
+  const sizes = (prod.options && prod.options.size) || uniqueKeyValues(prod, 'size')
+  populateSelect(document.getElementById('pt-size'), sizes.map(s => ({ value: s, label: s })))
+  document.getElementById('pt-size-field').style.display = ''
+
+  const allowedTn = prod.allowed_turnarounds && prod.allowed_turnarounds.length
+    ? prod.allowed_turnarounds
+    : Object.keys(config.globals.turnaround)
+  const comboCount = prod.price_table?.length || (prod.mode === 'ncr' ? sizes.length * (prod.options?.variant?.length || 0) : 0)
+  document.getElementById('pt-info').textContent = `${sizes.length} sizes · ${comboCount} combo rows · ${allowedTn.length} turnaround${allowedTn.length === 1 ? '' : 's'}`
+}
+
+function allowedTurnaroundsFor(prod) {
+  return prod.allowed_turnarounds && prod.allowed_turnarounds.length
+    ? prod.allowed_turnarounds
+    : Object.keys(config.globals.turnaround)
+}
+
+function uniqueKeyValues(prod, key) {
+  const set = new Set()
+  for (const r of (prod.price_table || [])) if (r.key[key] != null) set.add(r.key[key])
+  return [...set]
+}
+
+async function generate() {
+  const key = document.getElementById('pt-product').value
+  const prod = config.products[key]
+  const markup = parseFloat(document.getElementById('pt-markup').value) || 0
+  const sides  = parseInt(document.getElementById('pt-sides').value) || 1
+  const result = document.getElementById('pt-result')
+
+  try {
+    const size = document.getElementById('pt-size').value
+    const turnarounds = allowedTurnaroundsFor(prod)
+
+    // Fetch one row-set per turnaround, then merge into one row keyed by combo+qty+finishing
+    // with a `byTurnaround` map of sell prices.
+    const all = await Promise.all(turnarounds.map(tn =>
+      api('POST', '/api/all-combos', { product: key, markup, sides, turnaround: tn })
+        .then(rows => ({ tn, rows: rows.filter(r => r.specs.size === size) }))
+    ))
+
+    // Merge — every set has the same row layout, only sellPrice / unitSellPrice differ
+    const merged = []
+    const byKey = new Map()
+    for (const { tn, rows } of all) {
+      for (const r of rows) {
+        const k = JSON.stringify({ specs: r.specs, qty: r.qty, finishing: r.finishing })
+        let row = byKey.get(k)
+        if (!row) {
+          row = { ...r, byTurnaround: {} }
+          byKey.set(k, row); merged.push(row)
+        }
+        row.byTurnaround[tn] = { sellPrice: r.sellPrice, unitSellPrice: r.unitSellPrice }
+      }
+    }
+
+    result.innerHTML = renderTable(prod, merged, size, markup, sides, turnarounds)
+  } catch (e) {
+    result.innerHTML = `<p style="color:var(--danger);padding:16px">${e.message}</p>`
+  }
+}
+
+function renderTable(prod, rows, size, markup, sides, turnarounds) {
+  if (!rows.length) return '<p>No rows for this size.</p>'
+
+  // For lookup products, lookup_keys describes the row dimensions. For NCR
+  // (mode: ncr), the row dimension is just `variant`.
+  const otherKeys = prod.lookup_keys
+    ? prod.lookup_keys.filter(k => k !== 'size')
+    : (prod.mode === 'ncr' ? ['variant'] : [])
+
+  // Sort: combo → qty → finishing
+  rows.sort((a, b) => {
+    const ak = otherKeys.map(k => formatKeyValue(prod, k, a.specs[k])).join(' · ')
+    const bk = otherKeys.map(k => formatKeyValue(prod, k, b.specs[k])).join(' · ')
+    return ak.localeCompare(bk) || a.qty - b.qty || String(a.finishing).localeCompare(String(b.finishing))
+  })
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label} — ${size}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+  </h2>`
+
+  html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
+    <thead><tr>
+      <th>Size</th>
+      ${otherKeys.map(k => `<th>${humanize(k)}</th>`).join('')}
+      <th>Qty</th>
+      <th>Finishing</th>
+      ${turnarounds.map(tn => `<th>${config.globals.turnaround[tn]?.label || tn}<br><span style="font-weight:400;font-size:11px;color:var(--muted)">×${config.globals.turnaround[tn]?.multiplier || 1}</span></th>`).join('')}
+    </tr></thead>
+    <tbody>`
+
+  for (const r of rows) {
+    html += `<tr>
+      <td>${r.specs.size}</td>
+      ${otherKeys.map(k => `<td>${formatKeyValue(prod, k, r.specs[k])}</td>`).join('')}
+      <td><strong>${r.qty}</strong></td>
+      <td>${config.globals.finishings[r.finishing]?.label || r.finishing}</td>
+      ${turnarounds.map(tn => {
+        const p = r.byTurnaround?.[tn]
+        return p
+          ? `<td><span class="sell">$${p.sellPrice}</span><br><span class="unit">$${p.unitSellPrice}/u</span></td>`
+          : `<td>—</td>`
+      }).join('')}
+    </tr>`
+  }
+
+  html += `</tbody></table></div></div>`
+  return html
+}
+
+// Look up the human label for a lookup-key value (handles {key,label} variants)
+function formatKeyValue(prod, key, value) {
+  const opt = (prod.options?.[key] || []).find(o => (typeof o === 'object' ? o.key : o) === value)
+  if (opt && typeof opt === 'object') return opt.label
+  return String(value)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRICES TAB — edit price tables for one size at a time
+// ─────────────────────────────────────────────────────────────────────────────
+let pricesProdKey = null
+
+function initPrices() {
+  const prodSel = document.getElementById('pr-product')
+  populateSelect(prodSel, Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
+  prodSel.addEventListener('change', onPricesProductChange)
+  document.getElementById('pr-size').addEventListener('change', renderPricesGrid)
+  document.getElementById('pr-save').addEventListener('click', savePrices)
+  onPricesProductChange()
+}
+
+function onPricesProductChange() {
+  pricesProdKey = document.getElementById('pr-product').value
+  const prod = config.products[pricesProdKey]
+  const sizes = prod.options?.size || []
+  populateSelect(document.getElementById('pr-size'), sizes.map(s => ({ value: s, label: s })))
+  renderPricesGrid()
+}
+
+function renderPricesGrid() {
+  const prod = config.products[pricesProdKey]
+  const size = document.getElementById('pr-size').value
+  const grid = document.getElementById('pr-grid')
+  if (!prod || !size) { grid.innerHTML = ''; return }
+
+  // NCR products don't have a per-cell price grid — they're setup + slope.
+  // Send the user to the Products tab instead of showing a confusing empty grid.
+  if (prod.mode === 'ncr') {
+    grid.innerHTML = `<p style="color:var(--muted);padding:16px">
+      ${prod.label} uses a setup + slope cost model, not a per-cell price table.
+      Edit setup costs and marginal-per-book in the <strong>Products</strong> tab.
+    </p>`
+    return
+  }
+
+  const otherKeys = (prod.lookup_keys || []).filter(k => k !== 'size')
+  const qtys = prod.quantities || []
+  const allRows = (prod.price_table || []).filter(r => r.key.size === size)
+
+  if (!qtys.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No quantity break points yet — add some in the Products tab.</p>'; return }
+  if (!allRows.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No combos for this size yet — add a paper stock / option in the Products tab.</p>'; return }
+
+  let html = `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table class="price-grid">
+    <thead><tr>`
+  for (const k of otherKeys) html += `<th>${humanize(k)}</th>`
+  for (const q of qtys)      html += `<th>${q}</th>`
+  html += `</tr></thead><tbody>`
+
+  for (const row of allRows) {
+    const idx = prod.price_table.indexOf(row)
+    html += `<tr>`
+    for (const k of otherKeys) {
+      const v = row.key[k]
+      const opt = (prod.options[k] || []).find(o => (typeof o === 'object' ? o.key : o) === v)
+      const label = opt && typeof opt === 'object' ? opt.label : v
+      html += `<td class="row-key">${label}</td>`
+    }
+    for (const q of qtys) {
+      html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
+    }
+    html += `</tr>`
+  }
+  html += `</tbody></table></div></div>`
+  grid.innerHTML = html
+}
+
+function capturePricesEdits() {
+  const prod = config.products[pricesProdKey]
+  if (!prod) return
+  document.querySelectorAll('#pr-grid input[data-pr-row]').forEach(inp => {
+    const row = parseInt(inp.dataset.prRow)
+    const qty = parseInt(inp.dataset.prQty)
+    const v = inp.value === '' ? null : parseFloat(inp.value)
+    if (prod.price_table[row]) {
+      if (v == null) delete prod.price_table[row].prices[qty]
+      else           prod.price_table[row].prices[qty] = v
+    }
+  })
+}
+
+function savePrices() {
+  capturePricesEdits()
+  saveConfig().catch(e => toast(e.message, 'err'))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRODUCTS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function initProducts() {
+  renderProductList()
+  document.getElementById('prod-save').addEventListener('click', saveProduct)
+}
+
+function renderProductList() {
+  const ul = document.getElementById('prod-list')
+  ul.innerHTML = ''
+  for (const [key, prod] of Object.entries(config.products)) {
+    const li = document.createElement('li')
+    li.dataset.key = key
+    li.innerHTML = `<span class="list-label">${prod.label}</span><span class="list-sub">mode: ${prod.mode || 'formula'}</span>`
+    li.addEventListener('click', () => openProduct(key))
+    ul.appendChild(li)
+  }
+}
+
+function openProduct(key) {
+  currentProdKey = key
+  const prod = config.products[key]
+  document.querySelectorAll('#prod-list li').forEach(li => li.classList.toggle('active', li.dataset.key === key))
+  document.getElementById('prod-editor-title').textContent = prod.label
+  document.getElementById('prod-editor-sub').textContent   = `key: ${key} · mode: ${prod.mode}`
+  document.getElementById('prod-empty').style.display = 'none'
+  document.getElementById('prod-editor').style.display = 'flex'
+
+  const body = document.getElementById('prod-editor-body')
+  if (prod.mode === 'lookup')   body.innerHTML = editorLookup(prod)
+  else if (prod.mode === 'ncr') body.innerHTML = editorNcr(prod)
+  else                          body.innerHTML = `<p style="padding:20px;color:var(--muted)">No editor for mode "${prod.mode}".</p>`
+}
+
+// ── NCR editor ─ setup table + marginal-per-size ─────────────────────────────
+function editorNcr(prod) {
+  const sizes    = prod.options?.size || []
+  const variants = prod.options?.variant || []
+  const labelOf  = v => typeof v === 'object' ? v.label : v
+  const keyOf    = v => typeof v === 'object' ? v.key   : v
+
+  let html = `<div class="card">`
+
+  html += `<div class="note">
+    <strong>NCR pricing — setup + slope model.</strong>
+    <ul>
+      <li>Each size has a <strong>marginal cost per book</strong> (the per-book labour + paper). Same across variants of that size.</li>
+      <li>Each <strong>(size, variant)</strong> has a <strong>setup cost</strong> — the per-job fixed cost (plate, ink, registration, carbonless parts).</li>
+      <li>Quote formula: <code>line_total = setup + marginal × qty + book_wrap×qty + numbering×qty</code></li>
+      <li>Add or delete a size → the table auto-rebuilds. Same for variants.</li>
+      <li>Re-running the Excel importer wipes manual edits.</li>
+    </ul>
+  </div>`
+
+  // Sizes chip list
+  html += `<div class="editor-section">
+    <h3>Sizes</h3>
+    <div class="chip-list">
+      ${sizes.map(s => `<span class="chip">${s}<button onclick="removeNcrSize('${escapeAttr(s)}')">✕</button></span>`).join('')}
+    </div>
+    <div class="chip-add">
+      <input id="add-ncr-size" placeholder="add new size (e.g. 11x17)" />
+      <button onclick="addNcrSize()">+ Add Size</button>
+    </div>
+  </div>`
+
+  // Variants chip list
+  html += `<div class="editor-section">
+    <h3>Variants</h3>
+    <div class="chip-list">
+      ${variants.map(v => `<span class="chip">${labelOf(v)}<button onclick="removeNcrVariant('${escapeAttr(keyOf(v))}')">✕</button></span>`).join('')}
+    </div>
+    <div class="chip-add">
+      <input id="add-ncr-variant-key"   placeholder="key (e.g. 4part_single)" style="max-width:170px" />
+      <input id="add-ncr-variant-label" placeholder="label (e.g. 4 Part — Single Color)" />
+      <button onclick="addNcrVariant()">+ Add Variant</button>
+    </div>
+  </div>`
+
+  // Marginal per book per size
+  html += `<div class="editor-section">
+    <h3>Marginal Cost per Book (by size)</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      The per-book variable cost. Same across all variants of that size.
+    </p>
+    <table class="price-grid">
+      <thead><tr><th>Size</th><th>$ / book</th></tr></thead>
+      <tbody>
+        ${sizes.map(s => `
+          <tr>
+            <td class="row-key">${s}</td>
+            <td><input type="number" step="0.01" data-ncr-marginal="${escapeAttr(s)}" value="${prod.marginal_per_book?.[s] ?? ''}" /></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`
+
+  // Setup matrix (variants × sizes)
+  html += `<div class="editor-section">
+    <h3>Setup Cost by Variant × Size</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      Per-job fixed cost. Plate setup, ink, carbonless copies, etc.
+    </p>
+    <table class="price-grid">
+      <thead><tr><th>Variant</th>${sizes.map(s => `<th>${s}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${variants.map(v => {
+          const vKey = keyOf(v)
+          return `<tr>
+            <td class="row-key">${labelOf(v)}</td>
+            ${sizes.map(s => `<td><input type="number" step="0.01" data-ncr-setup-size="${escapeAttr(s)}" data-ncr-setup-variant="${escapeAttr(vKey)}" value="${prod.setup?.[s]?.[vKey] ?? ''}" /></td>`).join('')}
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`
+
+  // Quantity break points (display only — used by price table generator)
+  html += `<div class="editor-section">
+    <h3>Quantity Break Points (display only)</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      Quantities to show in the generated price table. NCR can quote any qty — these are just the rows the table displays.
+    </p>
+    <div class="chip-list">
+      ${(prod.quantities || []).map(q => `<span class="chip">${q}<button onclick="removeQty(${q})">✕</button></span>`).join('')}
+    </div>
+    <div class="chip-add">
+      <input id="add-qty" type="number" placeholder="add qty" />
+      <button onclick="addQty()">+ Add</button>
+    </div>
+  </div>`
+
+  // Allowed turnarounds + add-ons + finishings
+  const tnList = prod.allowed_turnarounds
+  html += `<div class="editor-section">
+    <h3>Available Turnarounds</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the turnaround speeds this product offers. Leave all unticked to allow every turnaround (default).</p>
+    <div class="checkbox-grid" id="prod-turnarounds">
+      ${Object.entries(config.globals.turnaround).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${(tnList || []).includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
+    </div>
+  </div>`
+
+  html += `<div class="editor-section">
+    <h3>Allowed Add-ons</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the add-ons this product can take. Leave all unticked to allow every add-on (default).</p>
+    <div class="checkbox-grid" id="prod-addons">
+      ${Object.entries(config.globals.addons).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${(prod.allowed_addons || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+    </div>
+  </div>`
+
+  const finList = prod.allowed_finishings
+  html += `<div class="editor-section">
+    <h3>Available Finishings</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the finishings this product can take. Leave all unticked to allow every finishing (default).</p>
+    <div class="checkbox-grid" id="prod-finishings">
+      ${Object.entries(config.globals.finishings).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${(finList || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+    </div>
+  </div>`
+
+  html += `</div>`
+  return html
+}
+
+window.addNcrSize = function () {
+  captureNcrEdits()
+  const input = document.getElementById('add-ncr-size')
+  const v = input.value.trim()
+  if (!v) return
+  const prod = config.products[currentProdKey]
+  if (!prod.options.size.includes(v)) prod.options.size.push(v)
+  prod.setup[v] = prod.setup[v] || {}
+  prod.marginal_per_book[v] = prod.marginal_per_book[v] ?? 0
+  refreshEditor()
+}
+
+window.removeNcrSize = function (size) {
+  captureNcrEdits()
+  const prod = config.products[currentProdKey]
+  prod.options.size = prod.options.size.filter(s => s !== size)
+  delete prod.setup[size]
+  delete prod.marginal_per_book[size]
+  refreshEditor()
+}
+
+window.addNcrVariant = function () {
+  captureNcrEdits()
+  const k = document.getElementById('add-ncr-variant-key').value.trim()
+  const l = document.getElementById('add-ncr-variant-label').value.trim() || k
+  if (!k) return
+  const prod = config.products[currentProdKey]
+  const exists = prod.options.variant.some(v => (typeof v === 'object' ? v.key : v) === k)
+  if (!exists) prod.options.variant.push({ key: k, label: l })
+  for (const s of prod.options.size) {
+    prod.setup[s] = prod.setup[s] || {}
+    prod.setup[s][k] = prod.setup[s][k] ?? 0
+  }
+  refreshEditor()
+}
+
+window.removeNcrVariant = function (key) {
+  captureNcrEdits()
+  const prod = config.products[currentProdKey]
+  prod.options.variant = prod.options.variant.filter(v => (typeof v === 'object' ? v.key : v) !== key)
+  for (const s of Object.keys(prod.setup || {})) delete prod.setup[s][key]
+  refreshEditor()
+}
+
+function captureNcrEdits() {
+  const prod = config.products[currentProdKey]
+  if (prod.mode !== 'ncr') return
+  prod.setup = prod.setup || {}
+  prod.marginal_per_book = prod.marginal_per_book || {}
+  document.querySelectorAll('input[data-ncr-marginal]').forEach(inp => {
+    const s = inp.dataset.ncrMarginal
+    const v = parseFloat(inp.value)
+    if (!isNaN(v)) prod.marginal_per_book[s] = v
+  })
+  document.querySelectorAll('input[data-ncr-setup-size]').forEach(inp => {
+    const s = inp.dataset.ncrSetupSize
+    const k = inp.dataset.ncrSetupVariant
+    const v = parseFloat(inp.value)
+    prod.setup[s] = prod.setup[s] || {}
+    if (!isNaN(v)) prod.setup[s][k] = v
+  })
+}
+
+// ── Lookup editor ─ size-scoped ──────────────────────────────────────────────
+//
+// New mental model: pick a size first, then see only the rows for that size.
+// Other lookup keys (paper stock, folding, pages, cover, …) become the rows
+// of a small grid that's specific to the chosen size. Adding a paper stock
+// auto-creates rows for the current size combos. No more "variant rows".
+//
+function editorLookup(prod) {
+  const keys = prod.lookup_keys || []
+  const otherKeys = keys.filter(k => k !== 'size')
+
+  let html = `<div class="card">`
+
+  html += `<div class="note">
+    <strong>This is the structural setup for ${prod.label}.</strong>
+    <ul>
+      <li>Edit the <strong>sizes</strong>, <strong>${otherKeys.join(', ') || 'options'}</strong>, <strong>quantity break points</strong>, allowed add-ons and finishings.</li>
+      <li>To edit actual prices, go to the <strong>Prices</strong> tab.</li>
+      <li>Adding or deleting a value auto-creates / removes price-table rows in the background. Deleting a value drops every price that used it — no undo.</li>
+      <li>Re-running the Excel importer wipes manual edits — only re-import when you have a new workbook.</li>
+    </ul>
+  </div>`
+
+  // Size chip management — no per-size selector here, just the master list
+  html += `<div class="editor-section">
+    <h3>Sizes</h3>
+    <div class="chip-list">
+      ${(prod.options.size || []).map(s => `<span class="chip">${s}<button onclick="removeLookupValue('size','${escapeAttr(s)}')">✕</button></span>`).join('')}
+    </div>
+    <div class="chip-add">
+      <input id="add-size" placeholder="add new size (e.g. 9 x 12)" />
+      <button onclick="addLookupValue('size')">+ Add Size</button>
+    </div>
+  </div>`
+
+  // Each non-size key gets its own chip list — adding a value auto-creates rows
+  for (const k of otherKeys) {
+    const opts = prod.options[k] || []
+    const labelOf = v => typeof v === 'object' ? v.label : v
+    const keyOf   = v => typeof v === 'object' ? v.key   : v
+    html += `<div class="editor-section">
+      <h3>${humanize(k)}</h3>
+      <div class="chip-list">
+        ${opts.map(v => `<span class="chip">${labelOf(v)}<button onclick="removeLookupValue('${k}','${escapeAttr(keyOf(v))}')">✕</button></span>`).join('')}
+      </div>
+      <div class="chip-add">
+        <input id="add-${k}" placeholder="add new ${humanize(k).toLowerCase()}" />
+        <button onclick="addLookupValue('${k}')">+ Add</button>
+      </div>
+    </div>`
+  }
+
+  // Quantities
+  html += `<div class="editor-section">
+    <h3>Quantity Columns</h3>
+    <div class="chip-list">
+      ${(prod.quantities || []).map(q => `<span class="chip">${q}<button onclick="removeQty(${q})">✕</button></span>`).join('')}
+    </div>
+    <div class="chip-add">
+      <input id="add-qty" type="number" placeholder="add qty" />
+      <button onclick="addQty()">+ Add</button>
+    </div>
+  </div>`
+
+  // Sheet imposition table (currently only used by coroplast)
+  if (prod.sheet_imposition) {
+    const si = prod.sheet_imposition
+    html += `<div class="editor-section">
+      <h3>Sheet Imposition (pieces per ${si.master || 'master'} sheet)</h3>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+        How many pieces of each size fit on a master sheet. Reference data — not used by the price lookup itself, but useful for cost reasoning and future cost-derived pricing.
+      </p>
+      <table class="price-grid" id="sheet-imp-table">
+        <thead><tr><th>Size</th><th>Pieces / Sheet</th><th></th></tr></thead>
+        <tbody>
+          ${Object.entries(si.pieces_per_sheet || {}).map(([sz, n]) => `
+            <tr>
+              <td><input data-imp-key value="${sz}" /></td>
+              <td><input data-imp-val type="number" min="1" value="${n}" /></td>
+              <td><button class="btn-mini" onclick="removeImpRow(this)">✕</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn-secondary" style="margin-top:6px" onclick="addImpRow()">+ Add Size</button>
+    </div>`
+  }
+
+  // Allowed turnarounds — opt-in per product
+  const tnList = prod.allowed_turnarounds
+  html += `<div class="editor-section">
+    <h3>Available Turnarounds</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      Tick the turnaround speeds this product offers. Leave all unticked to allow every turnaround (default).
+    </p>
+    <div class="checkbox-grid" id="prod-turnarounds">
+      ${Object.entries(config.globals.turnaround).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${(tnList || []).includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
+    </div>
+  </div>`
+
+  // Allowed finishings — opt-in per product
+  const finList = prod.allowed_finishings  // undefined = all allowed (engine default)
+  html += `<div class="editor-section">
+    <h3>Available Finishings</h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      Tick the finishings this product can take. Leave all unticked to allow every finishing (default).
+    </p>
+    <div class="checkbox-grid" id="prod-finishings">
+      ${Object.entries(config.globals.finishings).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${(finList || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+    </div>
+  </div>`
+
+  html += `</div>`
+  return html
+}
+
+function humanize(s) {
+  return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+function escapeAttr(s) {
+  return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;')
+}
+
+window.addImpRow = function () {
+  const tbody = document.querySelector('#sheet-imp-table tbody')
+  if (!tbody) return
+  const tr = document.createElement('tr')
+  tr.innerHTML = `
+    <td><input data-imp-key value="" placeholder="e.g. 36x48" /></td>
+    <td><input data-imp-val type="number" min="1" value="1" /></td>
+    <td><button class="btn-mini" onclick="removeImpRow(this)">✕</button></td>`
+  tbody.appendChild(tr)
+}
+window.removeImpRow = function (btn) {
+  btn.closest('tr').remove()
+}
+
+function captureSheetImposition(prod) {
+  const tbl = document.querySelector('#sheet-imp-table')
+  if (!tbl) return
+  const out = {}
+  tbl.querySelectorAll('tbody tr').forEach(tr => {
+    const k = tr.querySelector('[data-imp-key]')?.value.trim()
+    const v = parseInt(tr.querySelector('[data-imp-val]')?.value)
+    if (k && !isNaN(v)) out[k] = v
+  })
+  prod.sheet_imposition.pieces_per_sheet = out
+}
+
+
+// ── Lookup editor mutations ──────────────────────────────────────────────────
+
+window.addLookupValue = function (keyName) {
+  const input = document.getElementById(`add-${keyName}`)
+  const v = input.value.trim()
+  if (!v) return
+  const prod = config.products[currentProdKey]
+  if (!prod.options[keyName]) prod.options[keyName] = []
+  // Avoid duplicates (handles both string and {key,label} forms)
+  const exists = prod.options[keyName].some(o => (typeof o === 'object' ? o.key : o) === v)
+  if (!exists) prod.options[keyName].push(v)
+  input.value = ''
+  // Auto-create price-table rows for every combo that uses this new value
+  rebuildRowsForCombo(prod)
+  refreshEditor()
+}
+
+window.removeLookupValue = function (keyName, value) {
+  const prod = config.products[currentProdKey]
+  prod.options[keyName] = (prod.options[keyName] || []).filter(v => {
+    if (typeof v === 'object') return v.key !== value
+    return String(v) !== String(value)
+  })
+  // Drop any price_table rows referencing this value
+  prod.price_table = (prod.price_table || []).filter(r => String(r.key[keyName]) !== String(value))
+  refreshEditor()
+}
+
+window.addQty = function () {
+  const input = document.getElementById('add-qty')
+  const q = parseInt(input.value)
+  if (isNaN(q)) return
+  const prod = config.products[currentProdKey]
+  if (!prod.quantities.includes(q)) prod.quantities.push(q)
+  prod.quantities.sort((a, b) => a - b)
+  input.value = ''
+  refreshEditor()
+}
+
+window.removeQty = function (q) {
+  const prod = config.products[currentProdKey]
+  prod.quantities = (prod.quantities || []).filter(x => x !== q)
+  for (const row of (prod.price_table || [])) delete row.prices[q]
+  refreshEditor()
+}
+
+/**
+ * Make sure price_table contains exactly one row per cartesian combination
+ * of lookup_keys × options. Existing rows keep their prices; new ones start
+ * empty. Stale rows referencing removed options are dropped.
+ */
+function rebuildRowsForCombo(prod) {
+  const keys = prod.lookup_keys || []
+  if (!keys.length) return
+  const valueLists = keys.map(k => (prod.options[k] || []).map(o => typeof o === 'object' ? o.key : o))
+  if (valueLists.some(l => !l.length)) return    // can't build combos until every key has at least one value
+
+  const combos = cartesian(valueLists)
+  const existing = prod.price_table || []
+  const next = []
+  for (const combo of combos) {
+    const key = {}
+    keys.forEach((k, i) => key[k] = combo[i])
+    const found = existing.find(r => keys.every(k => String(r.key[k]) === String(key[k])))
+    next.push(found || { key, prices: {} })
+  }
+  prod.price_table = next
+}
+
+function cartesian(arrays) {
+  return arrays.reduce((acc, arr) => {
+    const out = []
+    for (const a of acc) for (const b of arr) out.push([...a, b])
+    return out
+  }, [[]])
+}
+
+function refreshEditor() {
+  openProduct(currentProdKey)
+}
+
+// ── Save product ─────────────────────────────────────────────────────────────
+function saveProduct() {
+  const prod = config.products[currentProdKey]
+  if (!prod) return
+
+  if (prod.mode === 'ncr')   captureNcrEdits()
+  if (prod.sheet_imposition) captureSheetImposition(prod)
+
+  // Capture allowed finishings (every editor) and allowed add-ons.
+  // Empty list = delete the field, which the engine treats as "allow all".
+  const captureChecks = id => {
+    const grid = document.querySelector(`#${id}`)
+    if (!grid) return null
+    return [...grid.querySelectorAll('input:checked')].map(i => i.value)
+  }
+
+  const finTicked = captureChecks('prod-finishings')
+  if (finTicked != null) {
+    if (finTicked.length) prod.allowed_finishings = finTicked
+    else                  delete prod.allowed_finishings
+  }
+  const addonTicked = captureChecks('prod-addons')
+  if (addonTicked != null) {
+    if (addonTicked.length) prod.allowed_addons = addonTicked
+    else                    delete prod.allowed_addons
+  }
+  const tnTicked = captureChecks('prod-turnarounds')
+  if (tnTicked != null) {
+    if (tnTicked.length) prod.allowed_turnarounds = tnTicked
+    else                 delete prod.allowed_turnarounds
+  }
+
+
+  saveConfig().then(() => {
+    renderProductList()
+    document.querySelectorAll('#prod-list li').forEach(li => li.classList.toggle('active', li.dataset.key === currentProdKey))
+    // Re-open so the editor reflects the saved state
+    openProduct(currentProdKey)
+  }).catch(e => toast(e.message, 'err'))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINISHINGS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function initFinishings() {
+  refreshFinishingSelect()
+  document.getElementById('fin-select').addEventListener('change', loadFinishing)
+  document.getElementById('fin-new').addEventListener('click', newFinishing)
+  document.getElementById('fin-save').addEventListener('click', saveFinishing)
+  document.getElementById('fin-delete').addEventListener('click', deleteFinishing)
+}
+
+function refreshFinishingSelect() {
+  const sel = document.getElementById('fin-select')
+  populateSelect(sel, [
+    { value: '', label: '— select —' },
+    ...Object.entries(config.globals.finishings).map(([k, v]) => ({ value: k, label: v.label }))
+  ])
+  document.getElementById('fin-editor').style.display = 'none'
+}
+
+function loadFinishing() {
+  const key = document.getElementById('fin-select').value
+  if (!key) { document.getElementById('fin-editor').style.display = 'none'; return }
+  const fin = config.globals.finishings[key]
+  document.getElementById('fin-key').value      = key
+  document.getElementById('fin-label').value    = fin.label
+  document.getElementById('fin-flat').value     = fin.flat
+  document.getElementById('fin-per-unit').value = fin.per_unit
+  document.getElementById('fin-editor').style.display = 'block'
+}
+
+function newFinishing() {
+  document.getElementById('fin-select').value = ''
+  document.getElementById('fin-key').value = ''
+  document.getElementById('fin-label').value = ''
+  document.getElementById('fin-flat').value = '0'
+  document.getElementById('fin-per-unit').value = '0'
+  document.getElementById('fin-editor').style.display = 'block'
+}
+
+function saveFinishing() {
+  const oldKey = document.getElementById('fin-select').value
+  const newKey = document.getElementById('fin-key').value.trim()
+  if (!newKey) { toast('Key required', 'err'); return }
+  if (oldKey && oldKey !== newKey) delete config.globals.finishings[oldKey]
+  config.globals.finishings[newKey] = {
+    label:    document.getElementById('fin-label').value.trim(),
+    flat:     parseFloat(document.getElementById('fin-flat').value),
+    per_unit: parseFloat(document.getElementById('fin-per-unit').value),
+  }
+  saveConfig().then(() => {
+    refreshFinishingSelect()
+    document.getElementById('fin-select').value = newKey
+    loadFinishing()
+    if (currentProdKey) openProduct(currentProdKey)
+  }).catch(e => toast(e.message, 'err'))
+}
+
+function deleteFinishing() {
+  const key = document.getElementById('fin-select').value
+  if (!key || !confirm(`Delete "${key}"?`)) return
+  delete config.globals.finishings[key]
+  saveConfig().then(() => refreshFinishingSelect())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GLOBALS TAB — turnaround multipliers + add-ons
+// ─────────────────────────────────────────────────────────────────────────────
+function initGlobals() {
+  renderGlobals()
+  document.getElementById('globals-save').addEventListener('click', saveGlobals)
+}
+
+function renderGlobals() {
+  const body = document.getElementById('globals-body')
+  let html = ''
+
+  html += `<div class="note">
+    <strong>Heads up — please read before editing:</strong>
+    <ul>
+      <li><strong>Globals apply to every product</strong> that opts in (via the Allowed Turnarounds / Add-ons checkboxes on each product).</li>
+      <li><strong>Turnaround</strong> is a <em>multiplier</em> on the cost subtotal — <code>1.0</code> = no change, <code>1.3</code> = +30%. Always keep <code>regular</code> = 1.0 as the baseline.</li>
+      <li><strong>Add-on types:</strong>
+        <code>flat</code> = one-time charge per order;
+        <code>flat_per_pc</code> = $ × number of pieces (e.g. grommets);
+        <code>pct_of_base</code> = % of the base cost (e.g. two-sided printing).</li>
+      <li><strong>Renaming a key</strong> (e.g. <code>grommet</code> → <code>grommets</code>) breaks any product that referenced the old key. After renaming, re-tick it on every product that should still use it.</li>
+      <li><strong>Deleting</strong> a turnaround or add-on does <em>not</em> remove it from each product's Allowed list — re-save the affected products if you want a clean state.</li>
+    </ul>
+  </div>`
+
+  html += `<div class="global-block"><h3 style="margin-bottom:10px">Turnaround Multipliers</h3>`
+  html += `<table class="price-grid"><thead><tr><th>Key</th><th>Label</th><th>Multiplier</th><th></th></tr></thead><tbody>`
+  for (const [k, v] of Object.entries(config.globals.turnaround)) {
+    html += `<tr>
+      <td><input data-tn-key="${k}" data-field="key"        value="${k}" /></td>
+      <td><input data-tn-key="${k}" data-field="label"      value="${v.label}" /></td>
+      <td><input data-tn-key="${k}" data-field="multiplier" type="number" step="0.01" value="${v.multiplier}" /></td>
+      <td><button class="btn-mini" onclick="removeTurnaround('${k}')">✕</button></td>
+    </tr>`
+  }
+  html += `</tbody></table>
+    <button class="btn-secondary" style="margin-top:8px" onclick="addTurnaround()">+ Add Turnaround</button>
+  </div>`
+
+  html += `<div class="global-block"><h3 style="margin-bottom:10px">Add-ons</h3>`
+  html += `<table class="price-grid"><thead><tr><th>Key</th><th>Label</th><th>Type</th><th>Amount</th><th></th></tr></thead><tbody>`
+  for (const [k, v] of Object.entries(config.globals.addons)) {
+    html += `<tr>
+      <td><input data-ad-key="${k}" data-field="key"    value="${k}" /></td>
+      <td><input data-ad-key="${k}" data-field="label"  value="${v.label}" /></td>
+      <td>
+        <select data-ad-key="${k}" data-field="type">
+          <option value="flat"         ${v.type === 'flat' ? 'selected' : ''}>flat</option>
+          <option value="flat_per_pc"  ${v.type === 'flat_per_pc' ? 'selected' : ''}>flat per pc</option>
+          <option value="pct_of_base"  ${v.type === 'pct_of_base' ? 'selected' : ''}>% of base</option>
+        </select>
+      </td>
+      <td><input data-ad-key="${k}" data-field="amount" type="number" step="0.01" value="${v.amount}" /></td>
+      <td><button class="btn-mini" onclick="removeAddon('${k}')">✕</button></td>
+    </tr>`
+  }
+  html += `</tbody></table>
+    <button class="btn-secondary" style="margin-top:8px" onclick="addAddon()">+ Add Add-on</button>
+  </div>`
+
+  body.innerHTML = html
+}
+
+function captureGlobals() {
+  // Turnaround — rebuild map
+  const tn = {}
+  document.querySelectorAll('#globals-body tbody tr').forEach(tr => {
+    const isTn = tr.querySelector('input[data-tn-key]')
+    if (!isTn) return
+    const inputs = tr.querySelectorAll('input')
+    const key = inputs[0].value.trim()
+    if (!key) return
+    tn[key] = { label: inputs[1].value.trim(), multiplier: parseFloat(inputs[2].value) || 1 }
+  })
+  if (Object.keys(tn).length) config.globals.turnaround = tn
+
+  // Add-ons — rebuild map
+  const ad = {}
+  document.querySelectorAll('#globals-body tbody tr').forEach(tr => {
+    const isAd = tr.querySelector('input[data-ad-key]')
+    if (!isAd) return
+    const inputs = tr.querySelectorAll('input')
+    const sel    = tr.querySelector('select')
+    const key = inputs[0].value.trim()
+    if (!key) return
+    ad[key] = {
+      label:  inputs[1].value.trim(),
+      type:   sel.value,
+      amount: parseFloat(inputs[2].value) || 0,
+    }
+  })
+  if (Object.keys(ad).length) config.globals.addons = ad
+}
+
+window.addTurnaround = function () {
+  captureGlobals()
+  let n = 1
+  while (config.globals.turnaround['new' + n]) n++
+  config.globals.turnaround['new' + n] = { label: 'New', multiplier: 1 }
+  renderGlobals()
+}
+window.removeTurnaround = function (k) {
+  captureGlobals()
+  delete config.globals.turnaround[k]
+  renderGlobals()
+}
+window.addAddon = function () {
+  captureGlobals()
+  let n = 1
+  while (config.globals.addons['new' + n]) n++
+  config.globals.addons['new' + n] = { label: 'New', type: 'flat_per_pc', amount: 0 }
+  renderGlobals()
+}
+window.removeAddon = function (k) {
+  captureGlobals()
+  delete config.globals.addons[k]
+  renderGlobals()
+}
+
+function saveGlobals() {
+  captureGlobals()
+  saveConfig().catch(e => toast(e.message, 'err'))
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 boot()
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCALE FACTOR MODAL
-// ─────────────────────────────────────────────────────────────────────────────
-function openScaleModal() {
-  updateScalePreview(0.65)
-  document.getElementById('scale-slider').value = 0.65
-  document.getElementById('scale-modal-overlay').classList.add('open')
-}
-
-function closeScaleModal() {
-  document.getElementById('scale-modal-overlay').classList.remove('open')
-}
-
-function updateScalePreview(scale) {
-  scale = parseFloat(scale)
-  document.getElementById('scale-val-display').textContent = scale.toFixed(2)
-  document.getElementById('scale-slider').value = scale
-
-  const setup    = 8
-  const perUnit  = 0.028
-  const qtys     = [25, 50, 100, 250, 500, 1000]
-  const tbody    = document.getElementById('scale-preview-rows')
-
-  tbody.innerHTML = qtys.map(qty => {
-    const cost     = setup + perUnit * Math.pow(qty, scale)
-    const unitCost = cost / qty
-    return `<tr>
-      <td>${qty}</td>
-      <td>$${cost.toFixed(2)}</td>
-      <td style="color:var(--accent);font-weight:600">$${unitCost.toFixed(4)}</td>
-    </tr>`
-  }).join('')
-}
-
-// Close on Escape
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeScaleModal()
-})
