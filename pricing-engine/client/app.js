@@ -79,6 +79,9 @@ async function exportXlsx() {
   const markup = parseFloat(document.getElementById('pt-markup').value) || 0
   const sides  = parseInt(document.getElementById('pt-sides').value) || 1
   const size = document.getElementById('pt-size').value
+  const expBtn = document.getElementById('pt-export')
+  expBtn.disabled = true
+  expBtn.textContent = 'Exporting…'
   try {
     const res = await fetch('/api/export-xlsx', {
       method: 'POST',
@@ -96,6 +99,9 @@ async function exportXlsx() {
     toast('Downloaded')
   } catch (e) {
     toast(e.message, 'err')
+  } finally {
+    expBtn.disabled = false
+    expBtn.textContent = '⬇ Export to Excel'
   }
 }
 
@@ -106,17 +112,34 @@ function onProductChange() {
   populateSelect(document.getElementById('pt-size'), sizes.map(s => ({ value: s, label: s })))
   document.getElementById('pt-size-field').style.display = ''
 
-  const allowedTn = prod.allowed_turnarounds && prod.allowed_turnarounds.length
-    ? prod.allowed_turnarounds
-    : Object.keys(config.globals.turnaround)
+  // Show thickness dropdown only if the product has a `thickness` lookup key.
+  // Adds an "All" option so the user can still see the full table.
+  const thickField = document.getElementById('pt-thickness-field')
+  const hasThickness = (prod.lookup_keys || []).includes('thickness')
+  if (hasThickness) {
+    const thicknesses = prod.options?.thickness || []
+    populateSelect(document.getElementById('pt-thickness'),
+      [{ value: '', label: 'All thicknesses' }, ...thicknesses.map(t => ({ value: t, label: t }))])
+    thickField.style.display = ''
+  } else {
+    thickField.style.display = 'none'
+  }
+
+  const allowedTn = allowedTurnaroundsFor(prod)
   const comboCount = prod.price_table?.length || (prod.mode === 'ncr' ? sizes.length * (prod.options?.variant?.length || 0) : 0)
   document.getElementById('pt-info').textContent = `${sizes.length} sizes · ${comboCount} combo rows · ${allowedTn.length} turnaround${allowedTn.length === 1 ? '' : 's'}`
 }
 
 function allowedTurnaroundsFor(prod) {
-  return prod.allowed_turnarounds && prod.allowed_turnarounds.length
+  // Explicit array (even empty) is authoritative. Undefined = legacy default to all.
+  return Array.isArray(prod.allowed_turnarounds)
     ? prod.allowed_turnarounds
     : Object.keys(config.globals.turnaround)
+}
+function allowedFinishingsFor(prod) {
+  return Array.isArray(prod.allowed_finishings)
+    ? prod.allowed_finishings
+    : Object.keys(config.globals.finishings)
 }
 
 function uniqueKeyValues(prod, key) {
@@ -131,47 +154,48 @@ async function generate() {
   const markup = parseFloat(document.getElementById('pt-markup').value) || 0
   const sides  = parseInt(document.getElementById('pt-sides').value) || 1
   const result = document.getElementById('pt-result')
+  const genBtn = document.getElementById('pt-generate')
+  const expBtn = document.getElementById('pt-export')
+
+  // Show loader and disable buttons during generation
+  result.innerHTML = `<div class="loader"><div class="spinner"></div><span>Generating price table…</span></div>`
+  genBtn.disabled = true
+  expBtn.disabled = true
+  genBtn.textContent = 'Generating…'
 
   try {
     const size = document.getElementById('pt-size').value
+    const thickness = document.getElementById('pt-thickness')?.value || ''
     const turnarounds = allowedTurnaroundsFor(prod)
 
-    // Fetch one row-set per turnaround, then merge into one row keyed by combo+qty+finishing
-    // with a `byTurnaround` map of sell prices.
-    const all = await Promise.all(turnarounds.map(tn =>
-      api('POST', '/api/all-combos', { product: key, markup, sides, turnaround: tn })
-        .then(rows => ({ tn, rows: rows.filter(r => r.specs.size === size) }))
-    ))
-
-    // Merge — every set has the same row layout, only sellPrice / unitSellPrice differ
-    const merged = []
-    const byKey = new Map()
-    for (const { tn, rows } of all) {
-      for (const r of rows) {
-        const k = JSON.stringify({ specs: r.specs, qty: r.qty, finishing: r.finishing })
-        let row = byKey.get(k)
-        if (!row) {
-          row = { ...r, byTurnaround: {} }
-          byKey.set(k, row); merged.push(row)
-        }
-        row.byTurnaround[tn] = { sellPrice: r.sellPrice, unitSellPrice: r.unitSellPrice }
-      }
-    }
+    // Single server call — engine returns rows with a byTurnaround map already populated
+    const all = await api('POST', '/api/all-combos-multi', { product: key, markup, sides })
+    let merged = all.filter(r => r.specs.size === size)
+    if (thickness) merged = merged.filter(r => r.specs.thickness === thickness)
 
     result.innerHTML = renderTable(prod, merged, size, markup, sides, turnarounds)
   } catch (e) {
     result.innerHTML = `<p style="color:var(--danger);padding:16px">${e.message}</p>`
+  } finally {
+    genBtn.disabled = false
+    expBtn.disabled = false
+    genBtn.textContent = 'Generate'
   }
 }
 
 function renderTable(prod, rows, size, markup, sides, turnarounds) {
-  if (!rows.length) return '<p>No rows for this size.</p>'
-
   // For lookup products, lookup_keys describes the row dimensions. For NCR
   // (mode: ncr), the row dimension is just `variant`.
   const otherKeys = prod.lookup_keys
     ? prod.lookup_keys.filter(k => k !== 'size')
     : (prod.mode === 'ncr' ? ['variant'] : [])
+
+  // No rows means this size has no prices entered yet. Render the empty
+  // structure (combos × qtys × finishings) with placeholder cells so the user
+  // can see what needs filling in.
+  if (!rows.length) {
+    return renderEmptyStructure(prod, otherKeys, size, markup, sides, turnarounds)
+  }
 
   // Sort: combo → qty → finishing
   rows.sort((a, b) => {
@@ -208,6 +232,60 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
           : `<td>—</td>`
       }).join('')}
     </tr>`
+  }
+
+  html += `</tbody></table></div></div>`
+  return html
+}
+
+function renderEmptyStructure(prod, otherKeys, size, markup, sides, turnarounds) {
+  // If thickness is filtered in the Price Table tab, narrow the cartesian to that one value
+  const selectedThickness = document.getElementById('pt-thickness')?.value || ''
+  const valueLists = otherKeys.map(k => {
+    const opts = (prod.options?.[k] || []).map(o => typeof o === 'object' ? o.key : o)
+    if (k === 'thickness' && selectedThickness) return opts.filter(v => v === selectedThickness)
+    return opts
+  })
+  const combos = valueLists.length ? cartesian(valueLists) : [[]]
+  const qtys = prod.quantities || []
+  const finishings = allowedFinishingsFor(prod)
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label} — ${size}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+  </h2>`
+
+  html += `<div class="note" style="background:#fef3c7;border-left:3px solid #f59e0b">
+    <strong>No prices entered for this size yet.</strong>
+    The structure below is empty — go to the <strong>Prices</strong> tab, pick this product and size, and fill in the cells. The price table will populate automatically once you save.
+  </div>`
+
+  if (!combos.length || !qtys.length) {
+    return html + '<p style="color:var(--muted);padding:16px">Add lookup options or quantity break points in the Products tab first.</p>'
+  }
+
+  html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
+    <thead><tr>
+      <th>Size</th>
+      ${otherKeys.map(k => `<th>${humanize(k)}</th>`).join('')}
+      <th>Qty</th>
+      <th>Finishing</th>
+      ${turnarounds.map(tn => `<th>${config.globals.turnaround[tn]?.label || tn}<br><span style="font-weight:400;font-size:11px;color:var(--muted)">×${config.globals.turnaround[tn]?.multiplier || 1}</span></th>`).join('')}
+    </tr></thead><tbody>`
+
+  for (const combo of combos) {
+    const labels = otherKeys.map((k, i) => formatKeyValue(prod, k, combo[i]))
+    for (const q of qtys) {
+      for (const f of finishings) {
+        html += `<tr>
+          <td>${size}</td>
+          ${labels.map(l => `<td>${l}</td>`).join('')}
+          <td><strong>${q}</strong></td>
+          <td>${config.globals.finishings[f]?.label || f}</td>
+          ${turnarounds.map(() => `<td style="color:var(--muted)">—</td>`).join('')}
+        </tr>`
+      }
+    }
   }
 
   html += `</tbody></table></div></div>`
@@ -442,33 +520,34 @@ function editorNcr(prod) {
     </div>
   </div>`
 
-  // Allowed turnarounds + add-ons + finishings
-  const tnList = prod.allowed_turnarounds
+  // Allowed turnarounds / add-ons / finishings — undefined = pre-tick all so user can untick
+  const tnList   = prod.allowed_turnarounds || Object.keys(config.globals.turnaround)
+  const adList   = prod.allowed_addons      || Object.keys(config.globals.addons)
+  const finList2 = prod.allowed_finishings  || Object.keys(config.globals.finishings)
   html += `<div class="editor-section">
     <h3>Available Turnarounds</h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the turnaround speeds this product offers. Leave all unticked to allow every turnaround (default).</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick what this product offers. Untick to remove from the price table.</p>
     <div class="checkbox-grid" id="prod-turnarounds">
       ${Object.entries(config.globals.turnaround).map(([k, v]) =>
-        `<label><input type="checkbox" value="${k}" ${(tnList || []).includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
+        `<label><input type="checkbox" value="${k}" ${tnList.includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
     </div>
   </div>`
 
   html += `<div class="editor-section">
     <h3>Allowed Add-ons</h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the add-ons this product can take. Leave all unticked to allow every add-on (default).</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick what this product can take.</p>
     <div class="checkbox-grid" id="prod-addons">
       ${Object.entries(config.globals.addons).map(([k, v]) =>
-        `<label><input type="checkbox" value="${k}" ${(prod.allowed_addons || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+        `<label><input type="checkbox" value="${k}" ${adList.includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
     </div>
   </div>`
 
-  const finList = prod.allowed_finishings
   html += `<div class="editor-section">
     <h3>Available Finishings</h3>
-    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick the finishings this product can take. Leave all unticked to allow every finishing (default).</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">Tick what this product can take.</p>
     <div class="checkbox-grid" id="prod-finishings">
       ${Object.entries(config.globals.finishings).map(([k, v]) =>
-        `<label><input type="checkbox" value="${k}" ${(finList || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+        `<label><input type="checkbox" value="${k}" ${finList2.includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
     </div>
   </div>`
 
@@ -626,29 +705,31 @@ function editorLookup(prod) {
     </div>`
   }
 
-  // Allowed turnarounds — opt-in per product
-  const tnList = prod.allowed_turnarounds
+  // Allowed turnarounds — when undefined, treat as "all on" (legacy default)
+  // so the user sees the current effective state and can untick what they
+  // don't want. Once saved, only the ticked ones are stored.
+  const tnList = prod.allowed_turnarounds || Object.keys(config.globals.turnaround)
   html += `<div class="editor-section">
     <h3>Available Turnarounds</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-      Tick the turnaround speeds this product offers. Leave all unticked to allow every turnaround (default).
+      Tick the turnaround speeds this product offers. Untick to remove from the price table.
     </p>
     <div class="checkbox-grid" id="prod-turnarounds">
       ${Object.entries(config.globals.turnaround).map(([k, v]) =>
-        `<label><input type="checkbox" value="${k}" ${(tnList || []).includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
+        `<label><input type="checkbox" value="${k}" ${tnList.includes(k) ? 'checked' : ''}/> ${v.label} <span style="color:var(--muted);font-size:11px">×${v.multiplier}</span></label>`).join('')}
     </div>
   </div>`
 
-  // Allowed finishings — opt-in per product
-  const finList = prod.allowed_finishings  // undefined = all allowed (engine default)
+  // Allowed finishings — same logic
+  const finList = prod.allowed_finishings || Object.keys(config.globals.finishings)
   html += `<div class="editor-section">
     <h3>Available Finishings</h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-      Tick the finishings this product can take. Leave all unticked to allow every finishing (default).
+      Tick the finishings this product can take. Untick to remove from the price table.
     </p>
     <div class="checkbox-grid" id="prod-finishings">
       ${Object.entries(config.globals.finishings).map(([k, v]) =>
-        `<label><input type="checkbox" value="${k}" ${(finList || []).includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+        `<label><input type="checkbox" value="${k}" ${finList.includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
     </div>
   </div>`
 
@@ -787,21 +868,14 @@ function saveProduct() {
     return [...grid.querySelectorAll('input:checked')].map(i => i.value)
   }
 
-  const finTicked = captureChecks('prod-finishings')
-  if (finTicked != null) {
-    if (finTicked.length) prod.allowed_finishings = finTicked
-    else                  delete prod.allowed_finishings
-  }
+  // Always store the explicit list — even if empty. Empty = "user explicitly
+  // unticked everything", not "default to all".
+  const finTicked   = captureChecks('prod-finishings')
   const addonTicked = captureChecks('prod-addons')
-  if (addonTicked != null) {
-    if (addonTicked.length) prod.allowed_addons = addonTicked
-    else                    delete prod.allowed_addons
-  }
-  const tnTicked = captureChecks('prod-turnarounds')
-  if (tnTicked != null) {
-    if (tnTicked.length) prod.allowed_turnarounds = tnTicked
-    else                 delete prod.allowed_turnarounds
-  }
+  const tnTicked    = captureChecks('prod-turnarounds')
+  if (finTicked   != null) prod.allowed_finishings  = finTicked
+  if (addonTicked != null) prod.allowed_addons      = addonTicked
+  if (tnTicked    != null) prod.allowed_turnarounds = tnTicked
 
 
   saveConfig().then(() => {

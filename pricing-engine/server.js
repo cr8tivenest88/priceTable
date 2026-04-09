@@ -2,7 +2,7 @@ const express  = require('express')
 const fs       = require('fs')
 const path     = require('path')
 const XLSX     = require('xlsx')
-const { calculatePrice, buildPriceTable, generateAllCombos, loadConfig } = require('./engine')
+const { calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig } = require('./engine')
 
 const app  = express()
 const PORT = 3000
@@ -50,10 +50,22 @@ app.post('/api/price-table', (req, res) => {
   }
 })
 
-// POST /api/all-combos — every spec × finishing × qty combination
+// POST /api/all-combos — every spec × finishing × qty combination (one turnaround)
 app.post('/api/all-combos', (req, res) => {
   try {
     const rows = generateAllCombos(req.body)
+    res.json(rows)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// POST /api/all-combos-multi — same enumeration, but one row per combo with a
+// `byTurnaround` map of all allowed turnaround prices. ~N× faster than calling
+// /api/all-combos N times when N = number of allowed turnarounds.
+app.post('/api/all-combos-multi', (req, res) => {
+  try {
+    const rows = generateAllCombosMulti(req.body)
     res.json(rows)
   } catch (e) {
     res.status(400).json({ error: e.message })
@@ -74,20 +86,9 @@ app.post('/api/export-xlsx', (req, res) => {
       ? productCfg.allowed_turnarounds
       : Object.keys(config.globals.turnaround || {})
 
-    // Generate one set per turnaround and merge
-    const merged = new Map()
-    for (const tn of turnarounds) {
-      let rows = generateAllCombos({ product, markup, turnaround: tn, sides })
-      if (size) rows = rows.filter(r => r.specs.size === size)
-      for (const r of rows) {
-        const k = JSON.stringify({ specs: r.specs, qty: r.qty, finishing: r.finishing })
-        let row = merged.get(k)
-        if (!row) { row = { ...r, byTurnaround: {} }; merged.set(k, row) }
-        row.byTurnaround[tn] = { sellPrice: r.sellPrice, unitSellPrice: r.unitSellPrice }
-      }
-    }
-
-    const rowsArr = [...merged.values()]
+    // Single multi-turnaround pass — much faster than N separate generateAllCombos calls
+    let rowsArr = generateAllCombosMulti({ product, markup, sides })
+    if (size) rowsArr = rowsArr.filter(r => r.specs.size === size)
     const otherKeys = productCfg.lookup_keys
       ? productCfg.lookup_keys.filter(k => k !== 'size')
       : (productCfg.mode === 'ncr' ? ['variant'] : [])

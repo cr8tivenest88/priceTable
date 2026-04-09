@@ -25,14 +25,33 @@
 const fs   = require('fs')
 const path = require('path')
 
+const CONFIG_PATH = path.join(__dirname, 'config.json')
+let _configCache = null
+let _configMtime = 0
+
+/**
+ * Reads config.json with mtime-based caching. Re-reads only when the file
+ * has changed on disk. Cuts ~1ms × thousands of calls per generation.
+ *
+ * Building the lookup index also lives here so it gets rebuilt when the
+ * config changes.
+ */
 function loadConfig() {
-  return JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'))
+  let mtime
+  try { mtime = fs.statSync(CONFIG_PATH).mtimeMs } catch { mtime = 0 }
+  if (_configCache && mtime === _configMtime) return _configCache
+  _configCache = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
+  _configMtime = mtime
+  // Drop any indexes the previous load attached
+  for (const p of Object.values(_configCache.products || {})) delete p._lookupIndex
+  return _configCache
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
 function calculatePrice(opts) {
-  const config = loadConfig()
+  // Optional `_config` lets callers skip the disk read in hot loops.
+  const config = opts._config || loadConfig()
   const productCfg = resolveProduct(config, opts.product)
 
   // Resolve unified `sides` field (1 or 2) into the per-product encoding so
@@ -105,6 +124,58 @@ function generateAllCombos({ product, markup = 0, turnaround = 'regular', sides 
   return []
 }
 
+/**
+ * Like generateAllCombos but returns one row per (combo × qty × finishing)
+ * with a `byTurnaround` map of { sellPrice, unitSellPrice } for every allowed
+ * turnaround. Computes the base+addons+finishing ONCE per combo and applies
+ * each turnaround multiplier — much faster than calling generateAllCombos N
+ * times when there are many turnarounds.
+ */
+function generateAllCombosMulti({ product, markup = 0, sides = null }) {
+  const config = loadConfig()
+  const productCfg = resolveProduct(config, product)
+
+  const turnarounds = (productCfg.allowed_turnarounds && productCfg.allowed_turnarounds.length)
+    ? productCfg.allowed_turnarounds
+    : Object.keys(config.globals.turnaround || {})
+
+  // Pre-load config once and pre-compute the regular-turnaround pass; then for
+  // each row, derive the other turnaround prices by ratio of multipliers
+  // (regular is always ×1 by convention).
+  const baseRows = productCfg.mode === 'lookup'
+    ? enumerateLookup(config, productCfg, { product, markup, turnaround: 'regular', sides, _config: config })
+    : productCfg.mode === 'ncr'
+    ? enumerateNcr(config, productCfg, { product, markup, turnaround: 'regular', _config: config })
+    : []
+
+  const tnMul = {}
+  for (const tn of turnarounds) tnMul[tn] = config.globals?.turnaround?.[tn]?.multiplier ?? 1
+  const regMul = config.globals?.turnaround?.regular?.multiplier ?? 1
+
+  // For each base row, compute sell price for each turnaround by re-scaling
+  // the cost subtotal. Subtotal = totalCost / regMul (regular's multiplier),
+  // then sellPrice(tn) = subtotal × tnMul × (1 + markup/100).
+  const markupMul = 1 + markup / 100
+  return baseRows.map(r => {
+    const subtotal = r.totalCost / regMul
+    const byTurnaround = {}
+    for (const tn of turnarounds) {
+      const total = subtotal * tnMul[tn]
+      const sell  = total * markupMul
+      byTurnaround[tn] = {
+        sellPrice:     round(sell),
+        unitSellPrice: round(sell / r.qty),
+      }
+    }
+    return {
+      specs:     r.specs,
+      qty:       r.qty,
+      finishing: r.finishing,
+      byTurnaround,
+    }
+  })
+}
+
 // ── Lookup mode ──────────────────────────────────────────────────────────────
 
 function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnaround = 'regular', finishing = 'no_finish', markup = 0 }) {
@@ -162,15 +233,29 @@ function interpolatePrice(prices, qty) {
   return points[points.length - 1][1]
 }
 
+/**
+ * O(1) lookup-table access. Builds an index keyed by the joined lookup-key
+ * values once per product, caches it on the productCfg, and reuses it on
+ * every subsequent call. Invalidated automatically when loadConfig reloads
+ * the file (the cache lives on the cached config object itself).
+ */
 function findLookupEntry(productCfg, specs) {
-  return productCfg.price_table.find(entry =>
-    productCfg.lookup_keys.every(k => entry.key[k] === specs[k])
-  )
+  if (!productCfg._lookupIndex) {
+    const idx = new Map()
+    for (const entry of productCfg.price_table || []) {
+      const key = productCfg.lookup_keys.map(k => entry.key[k]).join('\u0001')
+      idx.set(key, entry)
+    }
+    productCfg._lookupIndex = idx
+  }
+  const lookupKey = productCfg.lookup_keys.map(k => specs[k]).join('\u0001')
+  return productCfg._lookupIndex.get(lookupKey)
 }
 
-function enumerateLookup(config, productCfg, { product, markup, turnaround, sides }) {
+function enumerateLookup(config, productCfg, { product, markup, turnaround, sides, _config }) {
   const rows = []
-  const finishings = allowed(productCfg, 'finishings', config) || ['no_finish']
+  const cfgRef = _config || config
+  const finishings = allowed(productCfg, 'finishings', cfgRef) || ['no_finish']
   // When `sides` is set and the product encodes sides as a lookup key (flyer)
   // or variant (business card), we should only iterate the matching rows so
   // the table doesn't double-up on both single and double versions.
@@ -195,7 +280,7 @@ function enumerateLookup(config, productCfg, { product, markup, turnaround, side
     for (const finishing of finishings) {
       for (const qty of productCfg.quantities) {
         if (entry.prices[qty] == null) continue
-        const price = calculatePrice({ product, specs: entry.key, finishing, qty, markup, turnaround, sides })
+        const price = calculatePrice({ product, specs: entry.key, finishing, qty, markup, turnaround, sides, _config: cfgRef })
         rows.push({ comboLabel, specs: entry.key, finishing, ...price })
       }
     }
@@ -245,9 +330,10 @@ function calcNcr(config, productCfg, { specs = {}, qty, addons = [], turnaround 
   }
 }
 
-function enumerateNcr(config, productCfg, { product, markup, turnaround }) {
+function enumerateNcr(config, productCfg, { product, markup, turnaround, _config }) {
   const rows = []
-  const finishings = allowed(productCfg, 'finishings', config) || ['no_finish']
+  const cfgRef = _config || config
+  const finishings = allowed(productCfg, 'finishings', cfgRef) || ['no_finish']
   const sizes    = productCfg.options?.size || []
   const variants = (productCfg.options?.variant || []).map(v => typeof v === 'object' ? v.key : v)
   const qtys     = productCfg.quantities || []
@@ -259,7 +345,7 @@ function enumerateNcr(config, productCfg, { product, markup, turnaround }) {
       for (const finishing of finishings) {
         for (const qty of qtys) {
           try {
-            const price = calculatePrice({ product, specs, finishing, qty, markup, turnaround })
+            const price = calculatePrice({ product, specs, finishing, qty, markup, turnaround, _config: cfgRef })
             rows.push({ comboLabel, specs, finishing, ...price })
           } catch { /* missing setup for this combo — skip */ }
         }
@@ -272,8 +358,9 @@ function enumerateNcr(config, productCfg, { product, markup, turnaround }) {
 // ── Shared add-ons / turnaround / finishings ─────────────────────────────────
 
 /**
- * Resolve "allowed" list for a global category. If the product omits it,
- * default to ALL globals (everything is allowed by default).
+ * Resolve "allowed" list for a global category. An explicit array (even empty)
+ * is authoritative — empty means "user explicitly allowed nothing." Only when
+ * the field is missing entirely do we fall back to the all-allowed default.
  */
 function allowed(productCfg, category, config) {
   const explicit = productCfg[`allowed_${category}`]
@@ -318,4 +405,4 @@ function resolveProduct(config, key) {
 
 function round(n) { return Math.round(n * 100) / 100 }
 
-module.exports = { calculatePrice, buildPriceTable, generateAllCombos, loadConfig }
+module.exports = { calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig }

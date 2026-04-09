@@ -4303,13 +4303,6 @@
       "allowed_addons": [
         "ncr_book_wrap",
         "ncr_numbering"
-      ],
-      "allowed_finishings": [
-        "no_finish"
-      ],
-      "allowed_turnarounds": [
-        "regular",
-        "next_day"
       ]
     },
     "coroplast": {
