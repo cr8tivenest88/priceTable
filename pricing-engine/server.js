@@ -1,14 +1,25 @@
-const express  = require('express')
-const fs       = require('fs')
-const path     = require('path')
-const XLSX     = require('xlsx')
+const express     = require('express')
+const compression = require('compression')
+const fs          = require('fs')
+const path        = require('path')
+const XLSX        = require('xlsx')
 const { calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig } = require('./engine')
 
 const app  = express()
 const PORT = 3000
 
+app.use(compression())
 app.use(express.json())
-app.use(express.static(path.join(__dirname, 'client')))
+app.use(express.static(path.join(__dirname, 'client'), {
+  etag: true,
+  lastModified: true,
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (/\.(js|css)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate')
+    }
+  },
+}))
 
 // ── Config endpoints ──────────────────────────────────────────────────────────
 

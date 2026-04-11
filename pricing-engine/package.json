@@ -4,9 +4,11 @@
   "description": "Print product pricing engine with admin UI",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy": "scp -r server.js engine.js config.json package.json client gmtech:~/priceTable-1/pricing-engine/ && ssh gmtech \"cd ~/priceTable-1/pricing-engine && npm install --production && kill $(lsof -t -i:3000) 2>/dev/null; nohup node server.js > /dev/null 2>&1 &\""
   },
   "dependencies": {
+    "compression": "^1.8.1",
     "express": "^4.18.2",
     "xlsx": "^0.18.5"
   }
