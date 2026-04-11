@@ -177,9 +177,9 @@ function onProductChange() {
   // Products without a `size` lookup key (e.g. tshirts uses `art_size`) hide
   // the size dropdown entirely — the renderer iterates all art_sizes instead.
   const hasSize = (prod.lookup_keys || []).includes('size') || prod.mode === 'ncr'
+  const sizes = (prod.options && prod.options.size) || uniqueKeyValues(prod, 'size')
   const sizeField = document.getElementById('pt-size-field')
   if (hasSize) {
-    const sizes = (prod.options && prod.options.size) || uniqueKeyValues(prod, 'size')
     populateSelect(document.getElementById('pt-size'), sizes.map(s => ({ value: s, label: s })))
     sizeField.style.display = ''
   } else {
@@ -201,7 +201,8 @@ function onProductChange() {
 
   const allowedTn = allowedTurnaroundsFor(prod)
   const comboCount = prod.price_table?.length || (prod.mode === 'ncr' ? sizes.length * (prod.options?.variant?.length || 0) : 0)
-  document.getElementById('pt-info').textContent = `${sizes.length} sizes · ${comboCount} combo rows · ${allowedTn.length} turnaround${allowedTn.length === 1 ? '' : 's'}`
+  const sizeCountLabel = hasSize ? `${sizes.length} sizes · ` : ''
+  document.getElementById('pt-info').textContent = `${sizeCountLabel}${comboCount} combo rows · ${allowedTn.length} turnaround${allowedTn.length === 1 ? '' : 's'}`
 }
 
 function allowedTurnaroundsFor(prod) {
