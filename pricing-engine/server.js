@@ -190,8 +190,9 @@ app.post('/api/export-xlsx', (req, res) => {
     const tnLabel = k => config.globals.turnaround[k]?.label || k
     const wb = XLSX.utils.book_new()
 
-    // ── Coroplast: pivoted layout, one sheet per turnaround ────────────────
-    if (product === 'coroplast') {
+    // ── Coroplast / Foamcore: pivoted layout, one sheet per turnaround ─────
+    const isPivotVariant = (productCfg.lookup_keys || []).join(',') === 'thickness,size,variant'
+    if (isPivotVariant) {
       const variants = productCfg.options?.variant || []
       const thicks   = productCfg.options?.thickness || []
       const varKey   = v => typeof v === 'object' ? v.key : v

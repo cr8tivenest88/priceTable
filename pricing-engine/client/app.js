@@ -15,6 +15,21 @@ const DEFAULT_OPTIONS = {
     ],
     thickness: ['4mm', '6mm', '8mm', '10mm'],
   },
+  foamcore: {
+    variant: [
+      { key: '1_side',        label: '1 Side' },
+      { key: '2_sides',       label: '2 Sides' },
+      { key: 'grommet_top_2', label: 'Grommets — Top 2 Corners' },
+      { key: 'grommet_all_4', label: 'Grommets — All 4 Corners' },
+    ],
+    thickness: ['4mm', '6mm', '8mm'],
+  },
+}
+
+// Products that render with the pivoted variant-column layout (one mini-table
+// per turnaround per size, variants as columns, thickness × qty as rows).
+function isPivotVariantProduct(prod) {
+  return prod && (prod.lookup_keys || []).join(',') === 'thickness,size,variant'
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -215,10 +230,9 @@ async function generate() {
 }
 
 function renderTable(prod, rows, size, markup, sides, turnarounds) {
-  // Coroplast gets its own pivoted layout: variant becomes columns, one mini
-  // table per turnaround.
-  if (prod.label === 'Coroplast' ||
-      (prod.lookup_keys || []).join(',') === 'thickness,size,variant') {
+  // Coroplast / Foamcore share a pivoted layout: variant becomes columns, one
+  // mini table per turnaround.
+  if (isPivotVariantProduct(prod)) {
     return renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds)
   }
 
@@ -545,7 +559,7 @@ function renderPricesGrid() {
     return
   }
 
-  if (pricesProdKey === 'coroplast') {
+  if (isPivotVariantProduct(prod)) {
     grid.innerHTML = renderCoroplastPrices(prod)
     return
   }
