@@ -150,6 +150,61 @@ function parseFoamcore() {
   }
 }
 
+// ── Tickets (Event Tickets) ──────────────────────────────────────────────────
+// Stacked-block layout, one block per size. Each block has a header row:
+//   [_, Size, Paper Stock, Qty, Front, Front & Back]
+// followed by data rows sharing size + paper stock. Blocks are separated by
+// blank rows. Sides map to 'front' / 'front_back'.
+function parseTickets() {
+  const rows = sheet('Tickets')
+  const price_table = []
+  const sizes = new Set(), stocks = new Set(), qtys = new Set()
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    if (trim(r[1]) !== 'Size' || !/Front/i.test(String(r[4]))) continue
+
+    for (let j = i + 1; j < rows.length; j++) {
+      const d = rows[j]
+      const size  = trim(d[1])
+      const stock = trim(d[2])
+      const qty   = d[3]
+      if (!size || !isNum(qty)) break
+
+      const cleanStock = String(stock).replace(/[\r\n]+/g, '').trim()
+      sizes.add(size)
+      stocks.add(cleanStock)
+      qtys.add(qty)
+
+      // Store as 'single' / 'double' to match the flyer convention the engine
+      // uses for the Sides dropdown. Display labels keep the 'Front' wording.
+      const front    = d[4]
+      const frontBak = d[5]
+      if (isNum(front))    addPrice(price_table, { size, paper_stock: cleanStock, sides: 'single' }, qty, front)
+      if (isNum(frontBak)) addPrice(price_table, { size, paper_stock: cleanStock, sides: 'double' }, qty, frontBak)
+    }
+  }
+
+  return {
+    label: 'Event Tickets',
+    mode: 'lookup',
+    lookup_keys: ['size', 'paper_stock', 'sides'],
+    options: {
+      size:        [...sizes],
+      paper_stock: [...stocks],
+      sides: [
+        { key: 'single', label: 'Front' },
+        { key: 'double', label: 'Front & Back' },
+      ],
+    },
+    quantities: [...qtys].sort((a, b) => a - b),
+    price_table,
+    allowed_addons:      [],
+    allowed_finishings:  ['no_finish'],
+    allowed_turnarounds: ['regular', 'next_day', 'sameday', '1_hour'],
+  }
+}
+
 // ── Merge into existing config ───────────────────────────────────────────────
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
 
@@ -157,13 +212,20 @@ const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
 fs.writeFileSync(BAK_PATH, JSON.stringify(config, null, 2))
 
 config.products.foamcore = parseFoamcore()
+config.products.tickets  = parseTickets()
 
 fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
 
 const fc = config.products.foamcore
+const tk = config.products.tickets
 console.log(`Wrote ${CONFIG_PATH} (backup: ${BAK_PATH})`)
 console.log(`foamcore: ${fc.price_table.length} table rows · ${fc.quantities.length} qtys · ` +
             `sizes=${fc.options.size.length} · thicknesses=${fc.options.thickness.length}`)
 console.log(`  thicknesses: ${fc.options.thickness.join(', ')}`)
 console.log(`  sizes:       ${fc.options.size.join(', ')}`)
 console.log(`  qtys:        ${fc.quantities.join(', ')}`)
+console.log(`tickets:  ${tk.price_table.length} table rows · ${tk.quantities.length} qtys · ` +
+            `sizes=${tk.options.size.length} · stocks=${tk.options.paper_stock.length}`)
+console.log(`  sizes:       ${tk.options.size.join(', ')}`)
+console.log(`  stocks:      ${tk.options.paper_stock.join(' | ')}`)
+console.log(`  qtys:        ${tk.quantities.join(', ')}`)
