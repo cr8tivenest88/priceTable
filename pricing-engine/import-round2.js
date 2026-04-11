@@ -300,6 +300,144 @@ function parseLabels() {
   }
 }
 
+// ── T-Shirts ─────────────────────────────────────────────────────────────────
+// Two blocks with different column layouts:
+//
+//   Block A (art_size = 8x10, rows 1..14)
+//     Row 1: item | size | Colour | Small (×4 cols) | Medium (×4) | Large (×4)
+//            | X-Large (×4) | 2X-Large (×4)
+//     Row 2: Front/Back | Front/Back/Sameday | Both | Both Sameday  — repeating
+//     Rows 3..14: 12 colours, each with a price per (shirt_size × print_option)
+//
+//   Block B (art_size = 3x3, rows 17..30)
+//     Row 17: item | size | Colour | Small (×2) | Medium (×2) | Large (×2)
+//             | X-Large (×2) | 2X-Large (×2)
+//     Row 18: Base Price | Same day  — repeating
+//     Rows 19..30: 12 colours, each with a price per (shirt_size × turnaround).
+//     3x3 only has a single-side option (too small for 'Both').
+//
+// Output schema uses the flyer convention for sides: 'single' / 'double',
+// plus a sameday_prices map parallel to prices for the sameday turnaround.
+function parseTshirt() {
+  const rows = sheet('T Shirt')
+
+  // Canonical shirt-size key from header text
+  const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const cleanColor = c => String(c).trim()
+
+  const shirtSizeMap = {
+    'small':     { key: 'small',    label: 'Small' },
+    'medium':    { key: 'medium',   label: 'Medium' },
+    'large':     { key: 'large',    label: 'Large' },
+    'x_large':   { key: 'x_large',  label: 'X-Large' },
+    '2x_large':  { key: '2x_large', label: '2X-Large' },
+  }
+
+  const price_table = []
+  const artSizes = new Set()
+  const colors = new Map()     // key → { key, label }
+  const shirtSizes = new Map() // key → { key, label }
+
+  // Add or merge an entry's prices
+  function pushEntry(key, tn, unit) {
+    if (!isNum(unit) || unit <= 0) return
+    let entry = price_table.find(e => sameKey(e.key, key))
+    if (!entry) {
+      entry = { key, prices: {}, sameday_prices: {} }
+      price_table.push(entry)
+    }
+    if (tn === 'regular') entry.prices[1] = round4(unit)
+    else                  entry.sameday_prices[1] = round4(unit)
+  }
+
+  // Find the header rows that start each block. A header row has 'item' in
+  // col 0, 'Colour' in col 2, and shirt-size names in later columns.
+  const headerRows = []
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r]
+    if (trim(row[0]) !== 'item') continue
+    if (String(row[2]).trim().toLowerCase() !== 'colour') continue
+    headerRows.push(r)
+  }
+
+  for (const hdrRow of headerRows) {
+    const sizeRow = rows[hdrRow]      // 'Small', 'Medium', ..., '2X-Large'
+    const subRow  = rows[hdrRow + 1]  // 'Front/Back' or 'Base Price'
+
+    // Detect block type by looking at the sub-header text
+    const subText = (subRow || []).map(c => String(c || '').toLowerCase()).join(' ')
+    const isBigBlock = /both/.test(subText)   // 8x10 block has 'Both' in sub-headers
+
+    // Each shirt-size header position tells us where that shirt-size's price
+    // columns start. Columns per shirt-size:
+    //   Big block (8x10): 4 cols → FB-reg, FB-sameday, Both-reg, Both-sameday
+    //   Small block (3x3): 2 cols → Base, Sameday
+    const shirtStarts = []
+    for (let c = 3; c < sizeRow.length; c++) {
+      const label = trim(sizeRow[c])
+      if (!label) continue
+      const k = slug(label)
+      if (!shirtSizeMap[k]) continue
+      shirtStarts.push({ col: c, key: shirtSizeMap[k].key, label: shirtSizeMap[k].label })
+    }
+
+    // Data rows until a non-matching first column
+    for (let r = hdrRow + 2; r < rows.length; r++) {
+      const row = rows[r]
+      const item  = trim(row[0])
+      const aSize = trim(row[1])
+      const color = cleanColor(row[2])
+      if (!item || !aSize || !color) break
+      if (!/t.?shirt/i.test(item)) break
+
+      artSizes.add(aSize)
+      const colorKey = slug(color)
+      if (!colors.has(colorKey)) colors.set(colorKey, { key: colorKey, label: color })
+
+      for (const ss of shirtStarts) {
+        if (!shirtSizes.has(ss.key)) shirtSizes.set(ss.key, shirtSizeMap[slug(ss.label)])
+
+        if (isBigBlock) {
+          // 4 cols: FB-reg, FB-sameday, Both-reg, Both-sameday
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'single' }, 'regular', row[ss.col + 0])
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'single' }, 'sameday', row[ss.col + 1])
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'double' }, 'regular', row[ss.col + 2])
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'double' }, 'sameday', row[ss.col + 3])
+        } else {
+          // 2 cols: Base (regular single), Same day (sameday single) — no 'Both'
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'single' }, 'regular', row[ss.col + 0])
+          pushEntry({ art_size: aSize, color: colorKey, shirt_size: ss.key, sides: 'single' }, 'sameday', row[ss.col + 1])
+        }
+      }
+    }
+  }
+
+  // Order: preserve iteration order of the Maps/Sets
+  const orderedShirtSizes = ['small', 'medium', 'large', 'x_large', '2x_large']
+    .filter(k => shirtSizes.has(k)).map(k => shirtSizes.get(k))
+
+  return {
+    label: 'T-Shirts',
+    mode: 'lookup',
+    lookup_keys: ['art_size', 'color', 'shirt_size', 'sides'],
+    options: {
+      art_size:   [...artSizes],
+      color:      [...colors.values()],
+      shirt_size: orderedShirtSizes,
+      sides: [
+        { key: 'single', label: 'Single Side (Front or Back)' },
+        { key: 'double', label: 'Both Sides (Front + Back)' },
+      ],
+    },
+    quantities: [1],
+    price_table,
+    prices_include_turnaround: true,   // engine flag: use entry.sameday_prices directly
+    allowed_addons:      [],
+    allowed_finishings:  ['no_finish'],
+    allowed_turnarounds: ['regular', 'sameday'],
+  }
+}
+
 // ── Merge into existing config ───────────────────────────────────────────────
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
 
@@ -310,6 +448,7 @@ config.products.foamcore     = parseFoamcore()
 config.products.tickets      = parseTickets()
 config.products.photo_frames = parseFrames()
 config.products.labels       = parseLabels()
+config.products.tshirts      = parseTshirt()
 
 fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
 
@@ -320,3 +459,9 @@ for (const key of ['foamcore', 'tickets', 'photo_frames', 'labels']) {
   console.log(`  sizes: ${p.options.size.join(', ')}`)
   console.log(`  qtys:  ${p.quantities.join(', ')}`)
 }
+const ts = config.products.tshirts
+console.log(`tshirts: ${ts.price_table.length} table rows · ${ts.options.art_size.length} art sizes · ` +
+            `${ts.options.color.length} colors · ${ts.options.shirt_size.length} shirt sizes`)
+console.log(`  art sizes:   ${ts.options.art_size.join(', ')}`)
+console.log(`  shirt sizes: ${ts.options.shirt_size.map(s => s.label).join(', ')}`)
+console.log(`  colors:      ${ts.options.color.map(c => c.label).join(', ')}`)

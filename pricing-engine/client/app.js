@@ -24,12 +24,32 @@ const DEFAULT_OPTIONS = {
     ],
     thickness: ['4mm', '6mm', '8mm'],
   },
+  tshirts: {
+    shirt_size: [
+      { key: 'small',    label: 'Small' },
+      { key: 'medium',   label: 'Medium' },
+      { key: 'large',    label: 'Large' },
+      { key: 'x_large',  label: 'X-Large' },
+      { key: '2x_large', label: '2X-Large' },
+    ],
+    sides: [
+      { key: 'single', label: 'Single Side (Front or Back)' },
+      { key: 'double', label: 'Both Sides (Front + Back)' },
+    ],
+  },
 }
 
 // Products that render with the pivoted variant-column layout (one mini-table
 // per turnaround per size, variants as columns, thickness × qty as rows).
 function isPivotVariantProduct(prod) {
   return prod && (prod.lookup_keys || []).join(',') === 'thickness,size,variant'
+}
+
+// Products with the t-shirt shape: 4-axis lookup (art_size × color × shirt_size
+// × sides) and turnaround-specific prices stored on each entry.
+function isTshirtProduct(prod) {
+  return prod && prod.prices_include_turnaround &&
+    (prod.lookup_keys || []).join(',') === 'art_size,color,shirt_size,sides'
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -154,9 +174,17 @@ async function exportXlsx() {
 function onProductChange() {
   const key = document.getElementById('pt-product').value
   const prod = config.products[key]
-  const sizes = (prod.options && prod.options.size) || uniqueKeyValues(prod, 'size')
-  populateSelect(document.getElementById('pt-size'), sizes.map(s => ({ value: s, label: s })))
-  document.getElementById('pt-size-field').style.display = ''
+  // Products without a `size` lookup key (e.g. tshirts uses `art_size`) hide
+  // the size dropdown entirely — the renderer iterates all art_sizes instead.
+  const hasSize = (prod.lookup_keys || []).includes('size') || prod.mode === 'ncr'
+  const sizeField = document.getElementById('pt-size-field')
+  if (hasSize) {
+    const sizes = (prod.options && prod.options.size) || uniqueKeyValues(prod, 'size')
+    populateSelect(document.getElementById('pt-size'), sizes.map(s => ({ value: s, label: s })))
+    sizeField.style.display = ''
+  } else {
+    sizeField.style.display = 'none'
+  }
 
   // Show thickness dropdown only if the product has a `thickness` lookup key.
   // Adds an "All" option so the user can still see the full table.
@@ -213,10 +241,11 @@ async function generate() {
     const size = document.getElementById('pt-size').value
     const thickness = document.getElementById('pt-thickness')?.value || ''
     const turnarounds = allowedTurnaroundsFor(prod)
+    const hasSize = (prod.lookup_keys || []).includes('size') || prod.mode === 'ncr'
 
     // Single server call — engine returns rows with a byTurnaround map already populated
     const all = await api('POST', '/api/all-combos-multi', { product: key, markup, sides })
-    let merged = all.filter(r => r.specs.size === size)
+    let merged = hasSize && size ? all.filter(r => r.specs.size === size) : all
     if (thickness) merged = merged.filter(r => r.specs.thickness === thickness)
 
     result.innerHTML = renderTable(prod, merged, size, markup, sides, turnarounds)
@@ -234,6 +263,12 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
   // mini table per turnaround.
   if (isPivotVariantProduct(prod)) {
     return renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds)
+  }
+
+  // T-shirts: colors as rows, shirt_size × sides as columns, one mini table
+  // per (art_size × turnaround).
+  if (isTshirtProduct(prod)) {
+    return renderTshirtPriceTable(prod, rows, markup, turnarounds)
   }
 
   // NCR gets its own layout too: no finishing column, add-on combo columns
@@ -467,6 +502,88 @@ function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
   return html
 }
 
+// T-shirt price table: rows = colors, cols = shirt_size × sides, one table
+// per (art_size × turnaround). The `sides` UI dropdown isn't used here — the
+// sides axis is shown as sub-columns under each shirt_size header instead.
+function renderTshirtPriceTable(prod, rows, markup, turnarounds) {
+  if (!rows.length) {
+    return `<h2 style="margin:20px 0 10px;font-size:18px">${prod.label}</h2>
+      <p style="color:var(--muted);padding:16px">No prices yet. Fill them in under the Prices tab.</p>`
+  }
+
+  const colors     = prod.options?.color      || []
+  const shirtSizes = prod.options?.shirt_size || []
+  const artSizes   = prod.options?.art_size   || []
+  const sideOpts   = prod.options?.sides      || []
+  const lbl = o => typeof o === 'object' ? o.label : o
+  const kOf = o => typeof o === 'object' ? o.key   : o
+  const tnLabel = t => config.globals.turnaround[t]?.label || t
+
+  // map[art_size][color][shirt_size][sides][turnaround] = { sellPrice, unitSellPrice }
+  const map = {}
+  for (const r of rows) {
+    const a  = r.specs.art_size
+    const c  = r.specs.color
+    const ss = r.specs.shirt_size
+    const sd = r.specs.sides
+    for (const tn of turnarounds) {
+      const p = r.byTurnaround?.[tn]
+      if (!p) continue
+      ;((((map[a] = map[a] || {})[c] = map[a][c] || {})[ss] = map[a][c][ss] || {})[sd] = map[a][c][ss][sd] || {})[tn] = p
+    }
+  }
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup</span>
+  </h2>`
+
+  for (const a of artSizes) {
+    // Which sides actually have data for this art_size?
+    const presentSides = sideOpts.filter(s =>
+      colors.some(c => shirtSizes.some(ss => map[a]?.[kOf(c)]?.[kOf(ss)]?.[kOf(s)]))
+    )
+    if (!presentSides.length) continue
+
+    for (const tn of turnarounds) {
+      html += `<h3 style="margin:18px 0 8px;font-size:14px;color:var(--accent)">
+        ${prod.label} ${a} — ${tnLabel(tn)}
+      </h3>`
+      html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px"><div class="price-table-wrap"><table>
+        <thead>
+          <tr>
+            <th rowspan="2">Product Name</th>
+            <th rowspan="2">Art Size</th>
+            <th rowspan="2">Colour</th>
+            ${shirtSizes.map(ss => `<th colspan="${presentSides.length}">${lbl(ss)}</th>`).join('')}
+          </tr>
+          <tr>
+            ${shirtSizes.map(() => presentSides.map(s => `<th style="font-weight:500;font-size:11px">${lbl(s)}</th>`).join('')).join('')}
+          </tr>
+        </thead>
+        <tbody>`
+
+      for (const c of colors) {
+        html += `<tr>
+          <td style="color:var(--muted);font-size:12px">${prod.label}</td>
+          <td>${a}</td>
+          <td class="row-key">${lbl(c)}</td>`
+        for (const ss of shirtSizes) {
+          for (const s of presentSides) {
+            const cell = map[a]?.[kOf(c)]?.[kOf(ss)]?.[kOf(s)]?.[tn]
+            html += cell
+              ? `<td><span class="sell">$${cell.sellPrice}</span></td>`
+              : `<td style="color:var(--muted)">—</td>`
+          }
+        }
+        html += `</tr>`
+      }
+      html += `</tbody></table></div></div>`
+    }
+  }
+  return html
+}
+
 function renderEmptyStructure(prod, otherKeys, size, markup, sides, turnarounds) {
   // If thickness is filtered in the Price Table tab, narrow the cartesian to that one value
   const selectedThickness = document.getElementById('pt-thickness')?.value || ''
@@ -561,6 +678,11 @@ function renderPricesGrid() {
 
   if (isPivotVariantProduct(prod)) {
     grid.innerHTML = renderCoroplastPrices(prod)
+    return
+  }
+
+  if (isTshirtProduct(prod)) {
+    grid.innerHTML = renderTshirtPrices(prod)
     return
   }
 
@@ -660,6 +782,64 @@ function renderCoroplastPrices(prod) {
   return html
 }
 
+// T-shirt Prices editor: editable mirror of renderTshirtPriceTable — one
+// mini-table per (art_size × turnaround), rows = colours, cols = shirt_size ×
+// sides. Each cell edits entry.prices[1] (regular) or sameday_prices[1].
+function renderTshirtPrices(prod) {
+  const colors     = prod.options?.color      || []
+  const shirtSizes = prod.options?.shirt_size || []
+  const artSizes   = prod.options?.art_size   || []
+  const sideOpts   = prod.options?.sides      || []
+  const lbl = o => typeof o === 'object' ? o.label : o
+  const kOf = o => typeof o === 'object' ? o.key   : o
+
+  const findIdx = (a, c, ss, sd) => (prod.price_table || []).findIndex(e =>
+    e.key.art_size === a && e.key.color === c && e.key.shirt_size === ss && e.key.sides === sd)
+
+  let html = ''
+  for (const a of artSizes) {
+    const presentSides = sideOpts.filter(s =>
+      colors.some(c => shirtSizes.some(ss => findIdx(a, kOf(c), kOf(ss), kOf(s)) >= 0))
+    )
+    if (!presentSides.length) continue
+
+    for (const tn of ['regular', 'sameday']) {
+      const tnLabel = tn === 'regular' ? 'Regular' : 'Same Day'
+      html += `<h3 style="margin:24px 0 8px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:6px">
+        ${prod.label} ${a} — ${tnLabel}
+      </h3>`
+      html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px"><div class="price-table-wrap"><table class="price-grid">
+        <thead>
+          <tr>
+            <th rowspan="2">Colour</th>
+            ${shirtSizes.map(ss => `<th colspan="${presentSides.length}">${lbl(ss)}</th>`).join('')}
+          </tr>
+          <tr>
+            ${shirtSizes.map(() => presentSides.map(s => `<th style="font-weight:500;font-size:11px">${lbl(s)}</th>`).join('')).join('')}
+          </tr>
+        </thead>
+        <tbody>`
+      for (const c of colors) {
+        html += `<tr><td class="row-key">${lbl(c)}</td>`
+        for (const ss of shirtSizes) {
+          for (const s of presentSides) {
+            const idx = findIdx(a, kOf(c), kOf(ss), kOf(s))
+            const entry = idx >= 0 ? prod.price_table[idx] : null
+            const mapKey = tn === 'regular' ? 'prices' : 'sameday_prices'
+            const val = entry?.[mapKey]?.[1] ?? ''
+            html += idx >= 0
+              ? `<td><input type="number" step="0.01" data-ts-idx="${idx}" data-ts-tn="${tn}" value="${val}" /></td>`
+              : `<td style="color:var(--muted)">—</td>`
+          }
+        }
+        html += `</tr>`
+      }
+      html += `</tbody></table></div></div>`
+    }
+  }
+  return html
+}
+
 function capturePricesEdits() {
   const prod = config.products[pricesProdKey]
   if (!prod) return
@@ -671,6 +851,18 @@ function capturePricesEdits() {
       if (v == null) delete prod.price_table[row].prices[qty]
       else           prod.price_table[row].prices[qty] = v
     }
+  })
+  // T-shirt inputs: idx + turnaround → prices[1] or sameday_prices[1]
+  document.querySelectorAll('#pr-grid input[data-ts-idx]').forEach(inp => {
+    const idx = parseInt(inp.dataset.tsIdx)
+    const tn  = inp.dataset.tsTn
+    const v   = inp.value === '' ? null : parseFloat(inp.value)
+    const entry = prod.price_table?.[idx]
+    if (!entry) return
+    const mapKey = tn === 'regular' ? 'prices' : 'sameday_prices'
+    if (!entry[mapKey]) entry[mapKey] = {}
+    if (v == null) delete entry[mapKey][1]
+    else           entry[mapKey][1] = v
   })
 }
 
@@ -933,8 +1125,12 @@ function editorLookup(prod) {
     </ul>
   </div>`
 
-  // Size chip management — if product has sheet_imposition, sizes come from there
-  if (!prod.sheet_imposition) {
+  // Size chip management — only shown for products that actually have `size`
+  // as a lookup key. Products like tshirts use art_size instead and handle
+  // that via the generic per-key chip list below. Coroplast / foamcore have
+  // sheet_imposition and manage sizes there.
+  const hasSizeKey = (prod.lookup_keys || []).includes('size')
+  if (hasSizeKey && !prod.sheet_imposition) {
     html += `<div class="editor-section">
       <h3>Sizes</h3>
       <div class="chip-list">

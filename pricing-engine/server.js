@@ -226,6 +226,68 @@ app.post('/api/export-xlsx', (req, res) => {
       }
     }
 
+    // ── T-shirts: one sheet per (art_size × turnaround), rows = colours,
+    //    cols = shirt_size × sides. Mirrors the on-screen layout. ───────────
+    else if (productCfg.prices_include_turnaround &&
+             (productCfg.lookup_keys || []).join(',') === 'art_size,color,shirt_size,sides') {
+      const colors     = productCfg.options?.color      || []
+      const shirtSizes = productCfg.options?.shirt_size || []
+      const artSizes   = productCfg.options?.art_size   || []
+      const sideOpts   = productCfg.options?.sides      || []
+      const lbl = o => typeof o === 'object' ? o.label : o
+      const kOf = o => typeof o === 'object' ? o.key   : o
+
+      const rowsArr = generateAllCombosMulti({ product, markup })
+      const map = {}
+      for (const r of rowsArr) {
+        const a = r.specs.art_size, c = r.specs.color, ss = r.specs.shirt_size, sd = r.specs.sides
+        for (const tn of turnarounds) {
+          const p = r.byTurnaround?.[tn]
+          if (!p) continue
+          ;((((map[a] = map[a] || {})[c] = map[a][c] || {})[ss] = map[a][c][ss] || {})[sd] = map[a][c][ss][sd] || {})[tn] = p
+        }
+      }
+
+      for (const a of artSizes) {
+        const presentSides = sideOpts.filter(s =>
+          colors.some(c => shirtSizes.some(ss => map[a]?.[kOf(c)]?.[kOf(ss)]?.[kOf(s)]))
+        )
+        if (!presentSides.length) continue
+        for (const tn of turnarounds) {
+          // Two header rows: shirt-size spans, then side-option sub-headers.
+          const topHeader = ['Product Name', 'Art Size', 'Colour']
+          const subHeader = ['',             '',         '']
+          for (const ss of shirtSizes) {
+            topHeader.push(lbl(ss))
+            for (let i = 1; i < presentSides.length; i++) topHeader.push('')
+            for (const s of presentSides) subHeader.push(lbl(s))
+          }
+          const aoa = [topHeader, subHeader]
+          for (const c of colors) {
+            const row = [productCfg.label, a, lbl(c)]
+            for (const ss of shirtSizes) {
+              for (const s of presentSides) {
+                const cell = map[a]?.[kOf(c)]?.[kOf(ss)]?.[kOf(s)]?.[tn]
+                row.push(cell?.sellPrice ?? '')
+              }
+            }
+            aoa.push(row)
+          }
+          const ws = XLSX.utils.aoa_to_sheet(aoa)
+          // Merge the shirt-size header cells across their sides columns
+          if (presentSides.length > 1) {
+            ws['!merges'] = ws['!merges'] || []
+            for (let i = 0; i < shirtSizes.length; i++) {
+              const startCol = 3 + i * presentSides.length
+              ws['!merges'].push({ s: { r: 0, c: startCol }, e: { r: 0, c: startCol + presentSides.length - 1 } })
+            }
+          }
+          const name = `${a} ${tnLabel(tn)}`.slice(0, 30)
+          XLSX.utils.book_append_sheet(wb, ws, name)
+        }
+      }
+    }
+
     // ── NCR: one sheet per turnaround, add-on combo columns ────────────────
     else if (productCfg.mode === 'ncr') {
       const allowedAddons = productCfg.allowed_addons || []

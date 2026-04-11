@@ -8476,6 +8476,2638 @@
         "sameday",
         "1_hour"
       ]
+    },
+    "tshirts": {
+      "label": "T-Shirts",
+      "mode": "lookup",
+      "lookup_keys": [
+        "art_size",
+        "color",
+        "shirt_size",
+        "sides"
+      ],
+      "options": {
+        "art_size": [
+          "8x10",
+          "3x3"
+        ],
+        "color": [
+          {
+            "key": "white",
+            "label": "White"
+          },
+          {
+            "key": "black",
+            "label": "Black"
+          },
+          {
+            "key": "sport_grey",
+            "label": "Sport Grey"
+          },
+          {
+            "key": "dark_heather",
+            "label": "Dark Heather"
+          },
+          {
+            "key": "red",
+            "label": "Red"
+          },
+          {
+            "key": "orange",
+            "label": "Orange"
+          },
+          {
+            "key": "heliconia",
+            "label": "Heliconia"
+          },
+          {
+            "key": "royal",
+            "label": "Royal"
+          },
+          {
+            "key": "shpphire",
+            "label": "Shpphire"
+          },
+          {
+            "key": "navy",
+            "label": "Navy"
+          },
+          {
+            "key": "purple",
+            "label": "Purple"
+          },
+          {
+            "key": "electric_green",
+            "label": "Electric Green"
+          }
+        ],
+        "shirt_size": [
+          {
+            "key": "small",
+            "label": "Small"
+          },
+          {
+            "key": "medium",
+            "label": "Medium"
+          },
+          {
+            "key": "large",
+            "label": "Large"
+          },
+          {
+            "key": "x_large",
+            "label": "X-Large"
+          },
+          {
+            "key": "2x_large",
+            "label": "2X-Large"
+          }
+        ],
+        "sides": [
+          {
+            "key": "single",
+            "label": "Single Side (Front or Back)"
+          },
+          {
+            "key": "double",
+            "label": "Both Sides (Front + Back)"
+          }
+        ]
+      },
+      "quantities": [
+        1
+      ],
+      "price_table": [
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "white",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "black",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "sport_grey",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "dark_heather",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "red",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "orange",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "heliconia",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "royal",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "shpphire",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "navy",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "purple",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "small",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "medium",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 41.99
+          },
+          "sameday_prices": {
+            "1": 46.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "8x10",
+            "color": "electric_green",
+            "shirt_size": "2x_large",
+            "sides": "double"
+          },
+          "prices": {
+            "1": 44.49
+          },
+          "sameday_prices": {
+            "1": 48.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "white",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "white",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "white",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "white",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "white",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "black",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "black",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "black",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "black",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "black",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "sport_grey",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "sport_grey",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "sport_grey",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "sport_grey",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "sport_grey",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "dark_heather",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "dark_heather",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "dark_heather",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "dark_heather",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "dark_heather",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "red",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "red",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "red",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "red",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "red",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "orange",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "orange",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "orange",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "orange",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "orange",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "heliconia",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "heliconia",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "heliconia",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "heliconia",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "heliconia",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "royal",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "royal",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "royal",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "royal",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "royal",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "shpphire",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "shpphire",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "shpphire",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "shpphire",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "shpphire",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "navy",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "navy",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "navy",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "navy",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "navy",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "purple",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "purple",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "purple",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "purple",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "purple",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "electric_green",
+            "shirt_size": "small",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "electric_green",
+            "shirt_size": "medium",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "electric_green",
+            "shirt_size": "large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "electric_green",
+            "shirt_size": "x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 29.99
+          },
+          "sameday_prices": {
+            "1": 34.48
+          }
+        },
+        {
+          "key": {
+            "art_size": "3x3",
+            "color": "electric_green",
+            "shirt_size": "2x_large",
+            "sides": "single"
+          },
+          "prices": {
+            "1": 32.49
+          },
+          "sameday_prices": {
+            "1": 36.98
+          }
+        }
+      ],
+      "prices_include_turnaround": true,
+      "allowed_addons": [],
+      "allowed_finishings": [
+        "no_finish"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "sameday"
+      ]
     }
   }
 }

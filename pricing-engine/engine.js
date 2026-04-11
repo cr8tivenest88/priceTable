@@ -139,9 +139,27 @@ function generateAllCombosMulti({ product, markup = 0, sides = null }) {
     ? productCfg.allowed_turnarounds
     : Object.keys(config.globals.turnaround || {})
 
-  // Pre-load config once and pre-compute the regular-turnaround pass; then for
-  // each row, derive the other turnaround prices by ratio of multipliers
-  // (regular is always ×1 by convention).
+  // Slow path: products that store turnaround-specific prices directly (e.g.
+  // tshirts with a sameday_prices map) — the ratio trick below gives wrong
+  // sameday values, so re-enumerate per turnaround and merge by combo key.
+  if (productCfg.mode === 'lookup' && productCfg.prices_include_turnaround) {
+    const perTn = {}
+    for (const tn of turnarounds) {
+      perTn[tn] = enumerateLookup(config, productCfg, { product, markup, turnaround: tn, sides, _config: config })
+    }
+    const keyOf = r => `${JSON.stringify(r.specs)}|${r.qty}|${r.finishing}`
+    const base = perTn[turnarounds[0]] || []
+    return base.map(r => {
+      const byTurnaround = {}
+      for (const tn of turnarounds) {
+        const match = (perTn[tn] || []).find(x => keyOf(x) === keyOf(r))
+        if (match) byTurnaround[tn] = { sellPrice: match.sellPrice, unitSellPrice: match.unitSellPrice }
+      }
+      return { specs: r.specs, qty: r.qty, finishing: r.finishing, byTurnaround }
+    })
+  }
+
+  // Fast path: regular → sameday → etc. all scale from a single baseline.
   const baseRows = productCfg.mode === 'lookup'
     ? enumerateLookup(config, productCfg, { product, markup, turnaround: 'regular', sides, _config: config })
     : productCfg.mode === 'ncr'
@@ -183,7 +201,19 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
   if (!entry) {
     throw new Error(`No price for ${JSON.stringify(specs)} (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
   }
-  const unit = interpolatePrice(entry.prices, qty)
+
+  // Turnaround-specific pricing: some products (e.g. tshirts) store sameday
+  // prices directly on the entry rather than deriving them via a global
+  // multiplier. When present for the requested turnaround, use that map and
+  // skip the multiplier step so prices aren't double-applied.
+  let priceMap = entry.prices
+  let tnMul = turnaroundMultiplier(config, turnaround)
+  if (turnaround === 'sameday' && entry.sameday_prices) {
+    priceMap = entry.sameday_prices
+    tnMul = 1
+  }
+
+  const unit = interpolatePrice(priceMap, qty)
   if (unit == null) {
     throw new Error(`No price points for product (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
   }
@@ -192,7 +222,7 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
   const addonCost = applyAddons(config, productCfg, addons, qty, baseCost)
   const finCost   = finishingCost(config, finishing, qty)
   const subtotal  = baseCost + addonCost + finCost
-  const totalCost = subtotal * turnaroundMultiplier(config, turnaround)
+  const totalCost = subtotal * tnMul
   const sellPrice = totalCost * (1 + markup / 100)
 
   return {
@@ -202,7 +232,7 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
     addonCost:     round(addonCost),
     finishCost:    round(finCost),
     turnaround,
-    turnaroundMul: turnaroundMultiplier(config, turnaround),
+    turnaroundMul: tnMul,
     finishing,
     totalCost:     round(totalCost),
     markup,
