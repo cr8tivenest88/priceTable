@@ -280,14 +280,25 @@ function parseNCR() {
 }
 
 // ── Coroplast ────────────────────────────────────────────────────────────────
-// Coroplast is now a regular lookup product. Lookup keys:
-//   thickness × size × variant
-// where `variant` captures the mutually-exclusive combo of sides + finishing
-// hardware (grommets / H-stand) — picking one excludes the others by design.
-//
-// Seeded with the published 4mm × 6×24 example. Other sizes/thicknesses appear
-// as empty rows ready to be filled in via the editor.
+// Coroplast layout: each thickness section (4mm, 6mm, 8mm, 10mm) has:
+//   - Small sizes (6x24..12x48): each has its own Qty column + 5 variant cols
+//     (1 Side, 2 Sides, Grommet Top 2, Grommet All 4, H Stand)
+//   - Big sizes (18x24..48x96): share one Qty column + 2 variant cols each
+//     (1 Side, 2 Sides only)
+// Each thickness section repeats the same column layout; headers appear in
+// rows 1-2 (4mm), 14-15 (6mm), 26-27 (8mm), 39-40 (10mm).
 function parseCoroplast() {
+  const rows = sheet('Coroplast')
+
+  const VARIANT_MAP = {
+    '1 Side':         '1_side',
+    '2 Sides':        '2_sides',
+    '2 side':         '2_sides',
+    'Top 2 Corners':  'grommet_top_2',
+    'All 4 Corners':  'grommet_all_4',
+    'H Stand':        'h_stand',
+  }
+
   const variants = [
     { key: '1_side',         label: '1 Side' },
     { key: '2_sides',        label: '2 Sides' },
@@ -296,34 +307,129 @@ function parseCoroplast() {
     { key: 'h_stand',        label: 'H Stand' },
   ]
 
-  const thicknesses = ['4mm', '6mm', '10mm']
-  const sizes = ['6x24', '12x12', '12x16', '12x18', '12x24', '18x24', '24x24', '24x36', '25x37', '48x60']
-  const qtys  = [1, 2, 4, 8, 10, 16, 20, 30, 50]
-
-  // Sample data for 4mm × 6x24 from your example
-  const sample = {
-    1:  { '1_side': 7.94, '2_sides': 8.47, 'grommet_top_2': 9.35, 'grommet_all_4': 10.77, 'h_stand': 9.25 },
-    2:  { '1_side': 2.58, '2_sides': 5.90, 'grommet_top_2': 7.11, 'grommet_all_4':  8.52, 'h_stand': 9.83 },
-    4:  { '1_side': 3.77, '2_sides': 4.30, 'grommet_top_2': 5.71, 'grommet_all_4':  7.13, 'h_stand': 8.44 },
-    8:  { '1_side': 2.61, '2_sides': 3.06, 'grommet_top_2': 4.27, 'grommet_all_4':  5.47, 'h_stand': 6.58 },
-    10: { '1_side': 2.49, '2_sides': 2.95, 'grommet_top_2': 4.15, 'grommet_all_4':  5.35, 'h_stand': 6.46 },
-    16: { '1_side': 2.31, '2_sides': 2.77, 'grommet_top_2': 3.97, 'grommet_all_4':  5.17, 'h_stand': 6.28 },
-    20: { '1_side': 2.21, '2_sides': 2.65, 'grommet_top_2': 3.86, 'grommet_all_4':  5.06, 'h_stand': 6.17 },
-    30: { '1_side': 2.14, '2_sides': 2.58, 'grommet_top_2': 3.78, 'grommet_all_4':  4.98, 'h_stand': 6.09 },
-    50: { '1_side': 2.03, '2_sides': 2.46, 'grommet_top_2': 3.66, 'grommet_all_4':  4.86, 'h_stand': 5.97 },
-  }
-
-  const price_table = []
-  for (const t of thicknesses) {
-    for (const s of sizes) {
-      for (const v of variants) {
-        const prices = {}
-        if (t === '4mm' && s === '6x24') {
-          for (const q of qtys) prices[q] = sample[q][v.key]
-        }
-        price_table.push({ key: { thickness: t, size: s, variant: v.key }, prices })
+  // Find all thickness sections — each starts with a header row pair
+  const sections = []
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]
+    // Header row has 'Qty' in col 1 and a size name in col 2
+    if (String(r[1]).trim() === 'Qty' && /^\d+[xX]\d+$/i.test(String(r[2]).trim())) {
+      // Find the thickness from the first data row below the variant-header row
+      const dataRow = rows[i + 2] || []
+      const thickMatch = String(dataRow[0] || '').match(/(\d+mm)\s/i)
+      if (thickMatch) {
+        sections.push({ headerRow: i, variantRow: i + 1, thickness: thickMatch[1].toLowerCase() })
       }
     }
+  }
+
+  const allSizes = new Set()
+  const allThicknesses = new Set()
+  const qtys = new Set()
+  const price_table = []
+
+  for (const sec of sections) {
+    const hRow = rows[sec.headerRow]
+    const vRow = rows[sec.variantRow]
+    const thick = sec.thickness
+    allThicknesses.add(thick)
+
+    // Build column map for small sizes (have their own Qty col)
+    const smallBlocks = []
+    for (let c = 0; c < hRow.length; c++) {
+      if (String(hRow[c]).trim() !== 'Qty') continue
+      const sizeRaw = String(hRow[c + 1] || '').trim()
+      let size = sizeRaw
+      // Fix "1248" → "12x48", "12X12" → "12x12"
+      if (/^\d{3,}$/.test(size)) {
+        // Try longer widths first to avoid e.g. 6x248 instead of 12x48
+        for (const w of [48, 36, 32, 25, 24, 18, 12, 6]) {
+          const prefix = String(w)
+          if (size.startsWith(prefix) && size.length > prefix.length) {
+            const rest = size.slice(prefix.length)
+            if (/^\d{2,}$/.test(rest)) { size = `${w}x${rest}`; break }
+          }
+        }
+      }
+      size = size.replace(/X/, 'x')
+      if (!/^\d+x\d+$/.test(size)) continue
+
+      // Collect variant columns. Small-size blocks have "Grommets" or "H Stand"
+      // in the header row within the block's columns. If those keywords are absent,
+      // this is the big-sizes shared Qty column — skip it.
+      const varCols = []
+      let hasGrommetOrStand = false
+      for (let v = c + 1; v < c + 8 && v < hRow.length; v++) {
+        const hCell = String(hRow[v] || '').trim()
+        if (/Grommet/i.test(hCell) || /H Stand/i.test(hCell)) hasGrommetOrStand = true
+        const name = String(vRow[v] || '').trim()
+        if (VARIANT_MAP[name]) varCols.push({ col: v, variant: VARIANT_MAP[name] })
+      }
+      if (varCols.length >= 3 && hasGrommetOrStand) smallBlocks.push({ qtyCol: c, size, varCols })
+    }
+
+    // Build column map for big sizes — they share a single Qty column and each
+    // size occupies 2 cols (1 side, 2 sides). Detect the shared Qty col as the
+    // last 'Qty' in the header row (small sizes have earlier Qty cols).
+    let bigQtyCol = null
+    const bigBlocks = []
+    // Find the last Qty column — that's the one shared by all big sizes
+    for (let c = hRow.length - 1; c >= 0; c--) {
+      if (String(hRow[c]).trim() === 'Qty') {
+        // Make sure it's not a small-size Qty (those have a size name right after)
+        const nextCell = String(hRow[c + 1] || '').trim().replace(/X/g, 'x')
+        const isSmall = smallBlocks.some(b => b.qtyCol === c)
+        if (!isSmall) { bigQtyCol = c; break }
+      }
+    }
+    if (bigQtyCol != null) {
+      for (let c = bigQtyCol + 1; c < hRow.length; c++) {
+        const cell = String(hRow[c] || '').trim().replace(/X/g, 'x')
+        if (/^\d+x\d+$/i.test(cell)) {
+          bigBlocks.push({
+            qtyCol: bigQtyCol,
+            size: cell,
+            varCols: [
+              { col: c, variant: '1_side' },
+              { col: c + 1, variant: '2_sides' },
+            ],
+          })
+          c++ // skip the 2-sides column
+        }
+      }
+    }
+
+    const allBlocks = [...smallBlocks, ...bigBlocks]
+
+    // Read data rows for this thickness section
+    for (let r = sec.variantRow + 1; r < rows.length; r++) {
+      const row = rows[r]
+      const label = String(row[0] || '').trim()
+      if (!label) break // empty row = end of section
+      if (!label.toLowerCase().includes('coroplast')) break
+
+      for (const block of allBlocks) {
+        const qty = row[block.qtyCol]
+        if (!isNum(qty)) continue
+        qtys.add(qty)
+        allSizes.add(block.size)
+
+        for (const vc of block.varCols) {
+          const price = row[vc.col]
+          if (!isNum(price) || price <= 0) continue
+          addPrice(price_table, { thickness: thick, size: block.size, variant: vc.variant }, qty, price)
+        }
+      }
+    }
+  }
+
+  // Pieces per sheet — hardcoded from the Excel's imposition reference row.
+  // Small sizes calculated by fitting on 48x96 master sheet.
+  const pieces_per_sheet = {
+    '6x24': 32, '6x32': 24, '6x36': 21,
+    '12x12': 32, '12x16': 24, '12x18': 21, '12x36': 10, '12x48': 8,
+    '18x24': 10, '24x24': 8, '24x36': 4, '24x48': 4,
+    '25x37': 2, '32x48': 2, '36x36': 2, '36x48': 2,
+    '48x48': 2, '48x60': 1, '48x72': 1, '48x96': 1,
   }
 
   return {
@@ -331,23 +437,19 @@ function parseCoroplast() {
     mode: 'lookup',
     lookup_keys: ['thickness', 'size', 'variant'],
     options: {
-      thickness: thicknesses,
-      size:      sizes,
+      thickness: [...allThicknesses],
+      size:      [...allSizes],
       variant:   variants,
     },
-    quantities: qtys,
+    quantities: [...qtys].sort((a, b) => a - b),
     price_table,
-    // Sheet imposition: how many pieces of each size fit on a 48x96 master
-    // sheet. Reference data — not used by the price lookup itself, but
-    // editable in the UI and useful for cost reasoning.
     sheet_imposition: {
       master: '48x96',
-      pieces_per_sheet: {
-        '48x60': 1, '25x37': 2, '24x36': 4, '24x24': 8, '18x24': 10,
-        '12x24': 16, '12x18': 20, '12x16': 24, '12x12': 32,
-      },
+      pieces_per_sheet,
     },
-    allowed_addons: [],   // grommets / H-stand are encoded in `variant`, not as add-ons
+    allowed_addons: [],
+    allowed_finishings: ['no_finish'],
+    allowed_turnarounds: ['regular', 'next_day', 'sameday', '1_hour'],
   }
 }
 

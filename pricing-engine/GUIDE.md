@@ -378,3 +378,14 @@ pricing-engine/
 - **Keep `cost_modifier = 0` for default options.** It makes the all-combos table complete and filterable without affecting the price.
 - **Surcharges don't stack on finishings.** They only apply to `base_cost`, so a 10% rush fee on a $9.59 base is always $0.96 regardless of which finishing is chosen.
 - **The base cost already includes front-only printing.** If you want to model printing as a separate cost, lower `per_unit_cost` on the material and add a Modifier for front-only at your base print rate.
+
+
+  Folder   		│ /home/gmtech/priceTable-1/pricing-engine │
+  ├───────────────┼──────────────────────────────────────────┤
+  │ Process       		│ Node.js (PID 790077), server.js          │
+  ├───────────────┼──────────────────────────────────────────┤
+  │ Port          		│ 3000                                     │
+  ├───────────────┼──────────────────────────────────────────┤
+  │ Reverse proxy 		│ nginx on port 80 → localhost:3000        │
+  ├───────────────┼──────────────────────────────────────────┤
+  │ Auth          		│ Basic auth via /etc/nginx/.htpasswd  

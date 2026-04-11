@@ -2,6 +2,21 @@
 let config = {}
 let currentProdKey = null
 
+// Canonical default options for products that have a fixed domain.
+// Used to offer "restore missing defaults" when the user accidentally deletes one.
+const DEFAULT_OPTIONS = {
+  coroplast: {
+    variant: [
+      { key: '1_side',        label: '1 Side' },
+      { key: '2_sides',       label: '2 Sides' },
+      { key: 'grommet_top_2', label: 'Grommets — Top 2 Corners' },
+      { key: 'grommet_all_4', label: 'Grommets — All 4 Corners' },
+      { key: 'h_stand',       label: 'H Stand' },
+    ],
+    thickness: ['4mm', '6mm', '8mm', '10mm'],
+  },
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
   config = await api('GET', '/api/config')
@@ -11,6 +26,7 @@ async function boot() {
   initProducts()
   initFinishings()
   initGlobals()
+  initBackups()
 }
 
 // ── API helper ────────────────────────────────────────────────────────────────
@@ -32,14 +48,29 @@ async function saveConfig() {
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 function initNav() {
-  document.querySelectorAll('.nav-btn').forEach(btn => {
+  document.querySelectorAll('.nav-btn[data-tab]').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'))
+      document.querySelectorAll('.nav-btn[data-tab]').forEach(b => b.classList.remove('active'))
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'))
       btn.classList.add('active')
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active')
     })
   })
+  document.getElementById('reload-btn')?.addEventListener('click', hardReload)
+}
+
+async function hardReload() {
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      await Promise.all(keys.map(k => caches.delete(k)))
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.unregister()))
+    }
+  } catch {}
+  window.location.href = window.location.pathname + '?v=' + Date.now()
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -184,6 +215,18 @@ async function generate() {
 }
 
 function renderTable(prod, rows, size, markup, sides, turnarounds) {
+  // Coroplast gets its own pivoted layout: variant becomes columns, one mini
+  // table per turnaround.
+  if (prod.label === 'Coroplast' ||
+      (prod.lookup_keys || []).join(',') === 'thickness,size,variant') {
+    return renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds)
+  }
+
+  // NCR gets its own layout too: no finishing column, add-on combo columns
+  if (prod.mode === 'ncr') {
+    return renderNcrPriceTable(prod, rows, size, markup, turnarounds)
+  }
+
   // For lookup products, lookup_keys describes the row dimensions. For NCR
   // (mode: ncr), the row dimension is just `variant`.
   const otherKeys = prod.lookup_keys
@@ -211,16 +254,18 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
 
   html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
     <thead><tr>
+      <th>Product Name</th>
       <th>Size</th>
       ${otherKeys.map(k => `<th>${humanize(k)}</th>`).join('')}
       <th>Qty</th>
       <th>Finishing</th>
-      ${turnarounds.map(tn => `<th>${config.globals.turnaround[tn]?.label || tn}<br><span style="font-weight:400;font-size:11px;color:var(--muted)">×${config.globals.turnaround[tn]?.multiplier || 1}</span></th>`).join('')}
+      ${turnarounds.map(tn => `<th>${config.globals.turnaround[tn]?.label || tn}</th>`).join('')}
     </tr></thead>
     <tbody>`
 
   for (const r of rows) {
     html += `<tr>
+      <td>${prod.label}</td>
       <td>${r.specs.size}</td>
       ${otherKeys.map(k => `<td>${formatKeyValue(prod, k, r.specs[k])}</td>`).join('')}
       <td><strong>${r.qty}</strong></td>
@@ -235,6 +280,176 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
   }
 
   html += `</tbody></table></div></div>`
+  return html
+}
+
+// Coroplast-specific price table: variant becomes columns, one mini table per turnaround
+function renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds) {
+  if (!rows.length) {
+    return `<h2 style="margin:20px 0 10px;font-size:18px">${prod.label} — ${size}</h2>
+      <p style="color:var(--muted);padding:16px">No prices for this size. Fill them in under the Prices tab.</p>`
+  }
+
+  const variants = prod.options?.variant || []
+  const varKey   = v => typeof v === 'object' ? v.key : v
+  const varLabel = v => typeof v === 'object' ? v.label : v
+  const finLabel = k => config.globals.finishings[k]?.label || k
+  const tnLabel  = k => config.globals.turnaround[k]?.label || k
+
+  // Build lookup: map[turnaround][thickness][finishing][qty][variant] = {sellPrice, unitSellPrice}
+  const map = {}
+  for (const r of rows) {
+    const t = r.specs.thickness, v = r.specs.variant, q = r.qty, f = r.finishing
+    for (const tn of turnarounds) {
+      const p = r.byTurnaround?.[tn]
+      if (!p) continue
+      map[tn] = map[tn] || {}
+      map[tn][t] = map[tn][t] || {}
+      map[tn][t][f] = map[tn][t][f] || {}
+      map[tn][t][f][q] = map[tn][t][f][q] || {}
+      map[tn][t][f][q][v] = p
+    }
+  }
+
+  const thicks = [...new Set(rows.map(r => r.specs.thickness))]
+  const finishings = [...new Set(rows.map(r => r.finishing))]
+  const qtys = [...new Set(rows.map(r => r.qty))].sort((a, b) => a - b)
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label} — ${size}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+  </h2>`
+
+  for (const tn of turnarounds) {
+    if (!map[tn]) continue
+    html += `<h3 style="margin:18px 0 8px;font-size:14px;color:var(--accent)">${tnLabel(tn)}</h3>`
+    html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px"><div class="price-table-wrap"><table>
+      <thead><tr>
+        <th>Product Name</th>
+        <th>Thickness</th>
+        <th>Qty</th>
+        ${finishings.length > 1 ? '<th>Finishing</th>' : ''}
+        ${variants.map(v => `<th>${varLabel(v)}</th>`).join('')}
+      </tr></thead><tbody>`
+
+    for (const t of thicks) {
+      if (!map[tn][t]) continue
+      let firstRow = true
+      const rowCount = finishings.reduce((n, f) => n + (map[tn][t][f] ? Object.keys(map[tn][t][f]).length : 0), 0)
+      for (const f of finishings) {
+        if (!map[tn][t][f]) continue
+        for (const q of qtys) {
+          const varCell = map[tn][t][f][q]
+          if (!varCell) continue
+          html += `<tr>`
+          html += `<td style="color:var(--muted);font-size:12px">${prod.label} — ${size}</td>`
+          if (firstRow) {
+            html += `<td class="row-key" rowspan="${rowCount}" style="vertical-align:middle;font-weight:600">${t}</td>`
+            firstRow = false
+          }
+          html += `<td><strong>${q}</strong></td>`
+          if (finishings.length > 1) html += `<td>${finLabel(f)}</td>`
+          for (const v of variants) {
+            const p = varCell[varKey(v)]
+            html += p
+              ? `<td><span class="sell">$${p.sellPrice}</span></td>`
+              : `<td style="color:var(--muted)">—</td>`
+          }
+          html += `</tr>`
+        }
+      }
+    }
+    html += `</tbody></table></div></div>`
+  }
+
+  return html
+}
+
+// NCR price table: no finishing, one mini-table per turnaround, add-on combo columns
+function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
+  if (!rows.length) {
+    return `<h2 style="margin:20px 0 10px;font-size:18px">${prod.label}</h2>
+      <p style="color:var(--muted);padding:16px">No rows for this combo.</p>`
+  }
+
+  const allowedAddons = prod.allowed_addons || []
+  const addonDefs = allowedAddons
+    .map(k => ({ key: k, def: config.globals.addons[k] }))
+    .filter(a => a.def)
+
+  // Build power set of add-on combos
+  const combos = [[]]
+  for (const a of addonDefs) {
+    const len = combos.length
+    for (let i = 0; i < len; i++) combos.push([...combos[i], a])
+  }
+  const comboLabel = combo =>
+    combo.length === 0 ? 'Base' : combo.map(a => a.def.label).join(' + ')
+
+  // For each row and combo, compute the add-on cost (applied to base subtotal
+  // BEFORE turnaround multiplier and markup). NCR add-ons are flat_per_pc.
+  const markupMul = 1 + markup / 100
+  const addonCostFor = (combo, qty) => {
+    let total = 0
+    for (const a of combo) {
+      if (a.def.type === 'flat')        total += a.def.amount
+      else if (a.def.type === 'flat_per_pc') total += a.def.amount * qty
+    }
+    return total
+  }
+
+  // Sort rows: size → variant → qty
+  rows.sort((a, b) =>
+    String(a.specs.size).localeCompare(String(b.specs.size)) ||
+    String(a.specs.variant).localeCompare(String(b.specs.variant)) ||
+    a.qty - b.qty)
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup</span>
+  </h2>`
+
+  const variantLabel = k => {
+    const v = (prod.options?.variant || []).find(x => (typeof x === 'object' ? x.key : x) === k)
+    return v && typeof v === 'object' ? v.label : k
+  }
+
+  for (const tn of turnarounds) {
+    const tnMul = config.globals.turnaround[tn]?.multiplier ?? 1
+    html += `<h3 style="margin:18px 0 8px;font-size:14px;color:var(--accent)">${config.globals.turnaround[tn]?.label || tn}</h3>`
+    html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:12px"><div class="price-table-wrap"><table>
+      <thead><tr>
+        <th>Product Name</th>
+        <th>Size</th>
+        <th>Variant</th>
+        <th>Qty</th>
+        ${combos.map(c => `<th>${comboLabel(c)}</th>`).join('')}
+      </tr></thead><tbody>`
+
+    for (const r of rows) {
+      const basePrice = r.byTurnaround?.[tn]?.sellPrice
+      if (basePrice == null) continue
+      // Reverse-engineer the base subtotal for this turnaround:
+      //   sellPrice = subtotal × tnMul × markupMul
+      //   subtotal  = baseCost (no addons) + finishing(0) + addonCost(0)
+      const baseSubtotal = basePrice / tnMul / markupMul
+
+      html += `<tr>
+        <td>${prod.label}</td>
+        <td>${r.specs.size}</td>
+        <td>${variantLabel(r.specs.variant)}</td>
+        <td><strong>${r.qty}</strong></td>`
+      for (const combo of combos) {
+        const addonDelta = addonCostFor(combo, r.qty)
+        const newSubtotal = baseSubtotal + addonDelta
+        const newSell = newSubtotal * tnMul * markupMul
+        html += `<td><span class="sell">$${newSell.toFixed(2)}</span></td>`
+      }
+      html += `</tr>`
+    }
+    html += `</tbody></table></div></div>`
+  }
+
   return html
 }
 
@@ -308,27 +523,20 @@ function initPrices() {
   const prodSel = document.getElementById('pr-product')
   populateSelect(prodSel, Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
   prodSel.addEventListener('change', onPricesProductChange)
-  document.getElementById('pr-size').addEventListener('change', renderPricesGrid)
   document.getElementById('pr-save').addEventListener('click', savePrices)
   onPricesProductChange()
 }
 
 function onPricesProductChange() {
   pricesProdKey = document.getElementById('pr-product').value
-  const prod = config.products[pricesProdKey]
-  const sizes = prod.options?.size || []
-  populateSelect(document.getElementById('pr-size'), sizes.map(s => ({ value: s, label: s })))
   renderPricesGrid()
 }
 
 function renderPricesGrid() {
   const prod = config.products[pricesProdKey]
-  const size = document.getElementById('pr-size').value
   const grid = document.getElementById('pr-grid')
-  if (!prod || !size) { grid.innerHTML = ''; return }
+  if (!prod) { grid.innerHTML = ''; return }
 
-  // NCR products don't have a per-cell price grid — they're setup + slope.
-  // Send the user to the Products tab instead of showing a confusing empty grid.
   if (prod.mode === 'ncr') {
     grid.innerHTML = `<p style="color:var(--muted);padding:16px">
       ${prod.label} uses a setup + slope cost model, not a per-cell price table.
@@ -337,35 +545,105 @@ function renderPricesGrid() {
     return
   }
 
+  if (pricesProdKey === 'coroplast') {
+    grid.innerHTML = renderCoroplastPrices(prod)
+    return
+  }
+
+  const sizes = prod.options?.size || []
   const otherKeys = (prod.lookup_keys || []).filter(k => k !== 'size')
   const qtys = prod.quantities || []
-  const allRows = (prod.price_table || []).filter(r => r.key.size === size)
 
   if (!qtys.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No quantity break points yet — add some in the Products tab.</p>'; return }
-  if (!allRows.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No combos for this size yet — add a paper stock / option in the Products tab.</p>'; return }
+  if (!sizes.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No sizes defined yet — add some in the Products tab.</p>'; return }
 
-  let html = `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table class="price-grid">
-    <thead><tr>`
-  for (const k of otherKeys) html += `<th>${humanize(k)}</th>`
-  for (const q of qtys)      html += `<th>${q}</th>`
-  html += `</tr></thead><tbody>`
+  let html = ''
+  for (const size of sizes) {
+    const sizeRows = (prod.price_table || []).filter(r => r.key.size === size)
 
-  for (const row of allRows) {
-    const idx = prod.price_table.indexOf(row)
-    html += `<tr>`
-    for (const k of otherKeys) {
-      const v = row.key[k]
-      const opt = (prod.options[k] || []).find(o => (typeof o === 'object' ? o.key : o) === v)
-      const label = opt && typeof opt === 'object' ? opt.label : v
-      html += `<td class="row-key">${label}</td>`
+    html += `<h3 style="margin:24px 0 8px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:6px">${prod.label} — ${size}</h3>`
+
+    if (!sizeRows.length) {
+      html += '<p style="color:var(--muted);padding:8px 0 16px;font-size:13px">No combos for this size yet — add options in the Products tab.</p>'
+      continue
     }
-    for (const q of qtys) {
-      html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
+
+    html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px"><div class="price-table-wrap"><table class="price-grid">
+      <thead><tr>`
+    for (const k of otherKeys) html += `<th>${humanize(k)}</th>`
+    for (const q of qtys)      html += `<th>${q}</th>`
+    html += `</tr></thead><tbody>`
+
+    for (const row of sizeRows) {
+      const idx = prod.price_table.indexOf(row)
+      html += `<tr>`
+      for (const k of otherKeys) {
+        const v = row.key[k]
+        const opt = (prod.options[k] || []).find(o => (typeof o === 'object' ? o.key : o) === v)
+        const label = opt && typeof opt === 'object' ? opt.label : v
+        html += `<td class="row-key">${label}</td>`
+      }
+      for (const q of qtys) {
+        html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
+      }
+      html += `</tr>`
     }
-    html += `</tr>`
+    html += `</tbody></table></div></div>`
   }
-  html += `</tbody></table></div></div>`
+
   grid.innerHTML = html
+}
+
+// Coroplast-specific Prices layout — mirrors the Excel:
+//   one mini-table per size, rows = thickness × qty, columns = variants
+function renderCoroplastPrices(prod) {
+  const sizes      = prod.options?.size || []
+  const thicks     = prod.options?.thickness || []
+  const variants   = prod.options?.variant || []
+  const qtys       = prod.quantities || []
+  const varKey     = v => typeof v === 'object' ? v.key : v
+  const varLabel   = v => typeof v === 'object' ? v.label : v
+
+  let html = ''
+  for (const size of sizes) {
+    html += `<h3 style="margin:24px 0 8px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:6px">${prod.label} — ${size}</h3>`
+
+    html += `<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px"><div class="price-table-wrap"><table class="price-grid">
+      <thead>
+        <tr>
+          <th>Thickness</th><th>Qty</th>
+          ${variants.map(v => `<th>${varLabel(v)}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>`
+
+    for (const t of thicks) {
+      for (let qi = 0; qi < qtys.length; qi++) {
+        const q = qtys[qi]
+        html += `<tr>`
+        html += qi === 0
+          ? `<td class="row-key" rowspan="${qtys.length}" style="vertical-align:middle;font-weight:600">${t}</td>`
+          : ''
+        html += `<td class="row-key">${q}</td>`
+        for (const v of variants) {
+          const vk  = varKey(v)
+          const row = (prod.price_table || []).find(r =>
+            r.key.thickness === t && r.key.size === size && r.key.variant === vk)
+          if (!row) {
+            html += `<td style="color:var(--muted)">—</td>`
+            continue
+          }
+          const idx = prod.price_table.indexOf(row)
+          const val = row.prices[q] ?? ''
+          html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${val}" /></td>`
+        }
+        html += `</tr>`
+      }
+    }
+
+    html += `</tbody></table></div></div>`
+  }
+  return html
 }
 
 function capturePricesEdits() {
@@ -641,28 +919,48 @@ function editorLookup(prod) {
     </ul>
   </div>`
 
-  // Size chip management — no per-size selector here, just the master list
-  html += `<div class="editor-section">
-    <h3>Sizes</h3>
-    <div class="chip-list">
-      ${(prod.options.size || []).map(s => `<span class="chip">${s}<button onclick="removeLookupValue('size','${escapeAttr(s)}')">✕</button></span>`).join('')}
-    </div>
-    <div class="chip-add">
-      <input id="add-size" placeholder="add new size (e.g. 9 x 12)" />
-      <button onclick="addLookupValue('size')">+ Add Size</button>
-    </div>
-  </div>`
+  // Size chip management — if product has sheet_imposition, sizes come from there
+  if (!prod.sheet_imposition) {
+    html += `<div class="editor-section">
+      <h3>Sizes</h3>
+      <div class="chip-list">
+        ${(prod.options.size || []).map(s => `<span class="chip">${s}<button onclick="removeLookupValue('size','${escapeAttr(s)}')">✕</button></span>`).join('')}
+      </div>
+      <div class="chip-add">
+        <input id="add-size" placeholder="add new size (e.g. 9 x 12)" />
+        <button onclick="addLookupValue('size')">+ Add Size</button>
+      </div>
+    </div>`
+  }
 
   // Each non-size key gets its own chip list — adding a value auto-creates rows
   for (const k of otherKeys) {
     const opts = prod.options[k] || []
     const labelOf = v => typeof v === 'object' ? v.label : v
     const keyOf   = v => typeof v === 'object' ? v.key   : v
+
+    // Missing default values the user may have accidentally deleted
+    const defaults = DEFAULT_OPTIONS[currentProdKey]?.[k] || []
+    const currentKeys = new Set(opts.map(keyOf))
+    const missing = defaults.filter(d => !currentKeys.has(typeof d === 'object' ? d.key : d))
+
     html += `<div class="editor-section">
       <h3>${humanize(k)}</h3>
       <div class="chip-list">
         ${opts.map(v => `<span class="chip">${labelOf(v)}<button onclick="removeLookupValue('${k}','${escapeAttr(keyOf(v))}')">✕</button></span>`).join('')}
       </div>
+      ${missing.length ? `
+      <div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px">
+        <strong>Missing defaults:</strong>
+        <div class="chip-list" style="margin-top:6px">
+          ${missing.map(d => {
+            const dk = typeof d === 'object' ? d.key : d
+            const dl = typeof d === 'object' ? d.label : d
+            return `<span class="chip" style="background:#dbeafe;cursor:pointer" onclick="restoreDefaultOption('${k}','${escapeAttr(dk)}')" title="Click to restore">+ ${dl}</span>`
+          }).join('')}
+          ${missing.length > 1 ? `<button class="btn-secondary btn-sm" onclick="restoreAllDefaultOptions('${k}')">Restore all</button>` : ''}
+        </div>
+      </div>` : ''}
       <div class="chip-add">
         <input id="add-${k}" placeholder="add new ${humanize(k).toLowerCase()}" />
         <button onclick="addLookupValue('${k}')">+ Add</button>
@@ -682,13 +980,13 @@ function editorLookup(prod) {
     </div>
   </div>`
 
-  // Sheet imposition table (currently only used by coroplast)
+  // Sheet imposition table — also the single source of sizes for this product
   if (prod.sheet_imposition) {
     const si = prod.sheet_imposition
     html += `<div class="editor-section">
       <h3>Sheet Imposition (pieces per ${si.master || 'master'} sheet)</h3>
       <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-        How many pieces of each size fit on a master sheet. Reference data — not used by the price lookup itself, but useful for cost reasoning and future cost-derived pricing.
+        Sizes are managed here. Adding or removing a row updates the product's size list and price table automatically.
       </p>
       <table class="price-grid" id="sheet-imp-table">
         <thead><tr><th>Size</th><th>Pieces / Sheet</th><th></th></tr></thead>
@@ -710,7 +1008,10 @@ function editorLookup(prod) {
   // don't want. Once saved, only the ticked ones are stored.
   const tnList = prod.allowed_turnarounds || Object.keys(config.globals.turnaround)
   html += `<div class="editor-section">
-    <h3>Available Turnarounds</h3>
+    <h3>Available Turnarounds
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="toggleAllChecks('prod-turnarounds', true)">All</button>
+      <button class="btn-secondary btn-sm" onclick="toggleAllChecks('prod-turnarounds', false)">None</button>
+    </h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       Tick the turnaround speeds this product offers. Untick to remove from the price table.
     </p>
@@ -723,7 +1024,10 @@ function editorLookup(prod) {
   // Allowed finishings — same logic
   const finList = prod.allowed_finishings || Object.keys(config.globals.finishings)
   html += `<div class="editor-section">
-    <h3>Available Finishings</h3>
+    <h3>Available Finishings
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="toggleAllChecks('prod-finishings', true)">All</button>
+      <button class="btn-secondary btn-sm" onclick="toggleAllChecks('prod-finishings', false)">None</button>
+    </h3>
     <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
       Tick the finishings this product can take. Untick to remove from the price table.
     </p>
@@ -742,6 +1046,10 @@ function humanize(s) {
 }
 function escapeAttr(s) {
   return String(s).replace(/'/g, "\\'").replace(/"/g, '&quot;')
+}
+
+window.toggleAllChecks = function (gridId, checked) {
+  document.querySelectorAll(`#${gridId} input[type="checkbox"]`).forEach(cb => cb.checked = checked)
 }
 
 window.addImpRow = function () {
@@ -768,6 +1076,13 @@ function captureSheetImposition(prod) {
     if (k && !isNaN(v)) out[k] = v
   })
   prod.sheet_imposition.pieces_per_sheet = out
+  // Sync options.size from sheet imposition keys
+  prod.options.size = Object.keys(out)
+  // Drop price_table rows for sizes that no longer exist
+  const sizeSet = new Set(prod.options.size)
+  prod.price_table = (prod.price_table || []).filter(r => sizeSet.has(r.key.size))
+  // Rebuild to add rows for any new sizes
+  rebuildRowsForCombo(prod)
 }
 
 
@@ -779,11 +1094,45 @@ window.addLookupValue = function (keyName) {
   if (!v) return
   const prod = config.products[currentProdKey]
   if (!prod.options[keyName]) prod.options[keyName] = []
-  // Avoid duplicates (handles both string and {key,label} forms)
-  const exists = prod.options[keyName].some(o => (typeof o === 'object' ? o.key : o) === v)
+  // Avoid duplicates — compare against both key and label (case-insensitive)
+  const norm = s => String(s).trim().toLowerCase()
+  const exists = prod.options[keyName].some(o => {
+    const k = typeof o === 'object' ? o.key   : o
+    const l = typeof o === 'object' ? o.label : o
+    return norm(k) === norm(v) || norm(l) === norm(v)
+  })
   if (!exists) prod.options[keyName].push(v)
   input.value = ''
   // Auto-create price-table rows for every combo that uses this new value
+  rebuildRowsForCombo(prod)
+  refreshEditor()
+}
+
+// Restore a single missing default option (key + label)
+window.restoreDefaultOption = function (keyName, valueKey) {
+  const prod = config.products[currentProdKey]
+  const defaults = DEFAULT_OPTIONS[currentProdKey]?.[keyName] || []
+  const def = defaults.find(d => (typeof d === 'object' ? d.key : d) === valueKey)
+  if (!def) return
+  if (!prod.options[keyName]) prod.options[keyName] = []
+  // Only add if truly missing (by key)
+  const currentKeys = new Set(prod.options[keyName].map(o => typeof o === 'object' ? o.key : o))
+  if (currentKeys.has(valueKey)) return
+  prod.options[keyName].push(def)
+  rebuildRowsForCombo(prod)
+  refreshEditor()
+}
+
+// Restore all missing default options for a given key
+window.restoreAllDefaultOptions = function (keyName) {
+  const prod = config.products[currentProdKey]
+  const defaults = DEFAULT_OPTIONS[currentProdKey]?.[keyName] || []
+  if (!prod.options[keyName]) prod.options[keyName] = []
+  const currentKeys = new Set(prod.options[keyName].map(o => typeof o === 'object' ? o.key : o))
+  for (const d of defaults) {
+    const dk = typeof d === 'object' ? d.key : d
+    if (!currentKeys.has(dk)) prod.options[keyName].push(d)
+  }
   rebuildRowsForCombo(prod)
   refreshEditor()
 }
@@ -1074,6 +1423,76 @@ window.removeAddon = function (k) {
 function saveGlobals() {
   captureGlobals()
   saveConfig().catch(e => toast(e.message, 'err'))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKUPS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+function initBackups() {
+  document.getElementById('backup-create').addEventListener('click', createBackup)
+  renderBackups()
+}
+
+async function renderBackups() {
+  const list = document.getElementById('backup-list')
+  list.innerHTML = '<div class="loader"><div class="spinner"></div> Loading backups…</div>'
+  try {
+    const backups = await api('GET', '/api/backups')
+    if (!backups.length) {
+      list.innerHTML = '<p style="color:var(--muted)">No backups yet.</p>'
+      return
+    }
+    let html = `<table class="price-grid" style="font-size:13px">
+      <thead><tr><th>Date</th><th>Label</th><th>ID</th><th style="text-align:center">Actions</th></tr></thead><tbody>`
+    for (const b of backups) {
+      const d = new Date(b.timestamp)
+      const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString()
+      const shortId = b.id.slice(0, 8)
+      html += `<tr>
+        <td>${dateStr}</td>
+        <td>${b.label}</td>
+        <td style="font-family:monospace;font-size:11px;color:var(--muted)" title="${b.id}">${shortId}…</td>
+        <td style="text-align:center">
+          <button class="btn-secondary btn-sm" onclick="restoreBackup('${b.id}')">Restore</button>
+          <a class="btn-secondary btn-sm" href="/api/backup/${b.id}/download" style="text-decoration:none;display:inline-block">Download</a>
+          <button class="btn-mini" onclick="deleteBackup('${b.id}')">Delete</button>
+        </td>
+      </tr>`
+    }
+    html += '</tbody></table>'
+    list.innerHTML = html
+  } catch (e) {
+    list.innerHTML = `<p style="color:var(--danger)">${e.message}</p>`
+  }
+}
+
+async function createBackup() {
+  const label = document.getElementById('backup-label').value.trim() || 'Manual backup'
+  try {
+    await api('POST', '/api/backup', { label })
+    document.getElementById('backup-label').value = ''
+    toast('Backup created')
+    renderBackups()
+  } catch (e) { toast(e.message, 'err') }
+}
+
+window.restoreBackup = async function (id) {
+  if (!confirm('Restore this backup? (current config will be backed up first)')) return
+  try {
+    const result = await api('POST', `/api/restore/${id}`)
+    config = await api('GET', '/api/config')
+    toast(`Restored: ${result.restored.label} (${new Date(result.restored.timestamp).toLocaleString()})`)
+    renderBackups()
+  } catch (e) { toast(e.message, 'err') }
+}
+
+window.deleteBackup = async function (id) {
+  if (!confirm('Delete this backup permanently?')) return
+  try {
+    await api('DELETE', `/api/backup/${id}`)
+    toast('Backup deleted')
+    renderBackups()
+  } catch (e) { toast(e.message, 'err') }
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

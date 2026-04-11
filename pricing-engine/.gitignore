@@ -4,6 +4,7 @@ node_modules/
 .vscode/
 *.bak
 config.json.bak
+backups/
 .DS_Store
 Thumbs.db
 .env

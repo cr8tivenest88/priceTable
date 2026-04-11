@@ -260,12 +260,20 @@ function enumerateLookup(config, productCfg, { product, markup, turnaround, side
   // or variant (business card), we should only iterate the matching rows so
   // the table doesn't double-up on both single and double versions.
   const keys = productCfg.lookup_keys || []
+  // Only apply sides filtering for products that encode sides in a lookup key
+  // or use business-card-style variant names (base/double_sided/round_corner).
+  // Products like coroplast have a `variant` key but with their own naming
+  // (1_side, 2_sides, grommet_*) — sides filtering doesn't apply to them.
+  const bcVariants = new Set(['base', 'double_sided', 'round_corner', 'ds_round_corner'])
+  const isBcStyle = keys.includes('variant') &&
+    (productCfg.options?.variant || []).some(v => bcVariants.has(typeof v === 'object' ? v.key : v))
+
   const filterRow = entry => {
     if (sides == null) return true
     if (keys.includes('sides')) {
       return entry.key.sides === (Number(sides) === 2 ? 'double' : 'single')
     }
-    if (keys.includes('variant')) {
+    if (isBcStyle) {
       const v = entry.key.variant
       return Number(sides) === 2
         ? (v === 'double_sided' || v === 'ds_round_corner')

@@ -56,7 +56,11 @@
         <button class="nav-btn" data-tab="products">Products</button>
         <button class="nav-btn" data-tab="finishings">Finishings</button>
         <button class="nav-btn" data-tab="globals">Globals</button>
+        <button class="nav-btn" data-tab="backups">Backups</button>
       </nav>
+      <div style="margin-top:auto;padding:16px;border-top:1px solid #2d3f55">
+        <button class="nav-btn" id="reload-btn" style="width:100%;background:var(--accent);color:#fff;border-radius:6px;padding:10px;font-weight:600">↻ Clear Cache & Reload</button>
+      </div>
     </aside>
 
     <main class="main">
@@ -114,7 +118,7 @@
         <div class="note">
           <strong>Edit price tables here.</strong>
           <ul>
-            <li>Pick a <strong>product</strong> and a <strong>size</strong>. The grid shows one row per combo (paper, folding, variant, …) × one column per quantity break point.</li>
+            <li>Pick a <strong>product</strong>. All sizes are shown at once, grouped by size.</li>
             <li>To add a new size, paper stock, or quantity break point, go to the <strong>Products</strong> tab — those are structural settings.</li>
             <li>Empty cells are allowed. The engine interpolates between filled break points and clamps outside the range.</li>
           </ul>
@@ -122,7 +126,6 @@
         <div class="card">
           <div class="form-row">
             <div class="field"><label>Product</label><select id="pr-product"></select></div>
-            <div class="field"><label>Size</label><select id="pr-size"></select></div>
           </div>
         </div>
         <div id="pr-grid"></div>
@@ -184,6 +187,24 @@
         <h1>Globals</h1>
         <div id="globals-body"></div>
         <button class="btn-primary" id="globals-save">Save Globals</button>
+      </section>
+
+      <!-- ── BACKUPS TAB ── -->
+      <section id="tab-backups" class="tab">
+        <h1>Backups</h1>
+        <div class="note">
+          <strong>Version snapshots of your config.</strong>
+          <ul>
+            <li>A backup is created <strong>automatically</strong> every time you save config changes.</li>
+            <li>You can also create <strong>manual</strong> backups with a custom label before making big changes.</li>
+            <li><strong>Restore</strong> rolls the config back to that snapshot (and auto-backs up the current state first, so it's safe).</li>
+          </ul>
+        </div>
+        <div class="card" style="display:flex;gap:12px;align-items:center">
+          <input type="text" id="backup-label" placeholder="Backup label (optional)" style="max-width:300px" />
+          <button class="btn-primary" id="backup-create">Create Backup</button>
+        </div>
+        <div id="backup-list" style="margin-top:20px"></div>
       </section>
 
     </main>
