@@ -162,24 +162,15 @@
       <!-- ── FINISHINGS TAB ── -->
       <section id="tab-finishings" class="tab">
         <h1>Finishings</h1>
-        <div class="toolbar">
-          <select id="fin-select"></select>
-          <button class="btn-primary" id="fin-new">+ New Finishing</button>
+        <div class="note">
+          <strong>Edit all finishings in one table.</strong>
+          <ul>
+            <li><strong>Key</strong> is the internal identifier — renaming it breaks any product that referenced the old name. After renaming, re-tick it on every affected product.</li>
+            <li><strong>Flat Cost</strong> is a one-time charge per order; <strong>Per Unit</strong> is applied per piece.</li>
+          </ul>
         </div>
-        <div id="fin-editor" class="card" style="display:none">
-          <div class="form-row">
-            <div class="field"><label>Key</label><input type="text" id="fin-key" /></div>
-            <div class="field"><label>Label</label><input type="text" id="fin-label" /></div>
-          </div>
-          <div class="form-row">
-            <div class="field"><label>Flat Cost ($)</label><input type="number" id="fin-flat" step="0.01" min="0" /></div>
-            <div class="field"><label>Per Unit ($)</label><input type="number" id="fin-per-unit" step="0.001" min="0" /></div>
-          </div>
-          <div class="actions">
-            <button class="btn-primary" id="fin-save">Save</button>
-            <button class="btn-danger" id="fin-delete">Delete</button>
-          </div>
-        </div>
+        <div id="finishings-body"></div>
+        <button class="btn-primary" id="finishings-save">Save Finishings</button>
       </section>
 
       <!-- ── GLOBALS TAB ── -->

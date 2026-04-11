@@ -1450,65 +1450,74 @@ function saveProduct() {
 // FINISHINGS TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function initFinishings() {
-  refreshFinishingSelect()
-  document.getElementById('fin-select').addEventListener('change', loadFinishing)
-  document.getElementById('fin-new').addEventListener('click', newFinishing)
-  document.getElementById('fin-save').addEventListener('click', saveFinishing)
-  document.getElementById('fin-delete').addEventListener('click', deleteFinishing)
+  renderFinishings()
+  document.getElementById('finishings-save').addEventListener('click', saveFinishings)
 }
 
-function refreshFinishingSelect() {
-  const sel = document.getElementById('fin-select')
-  populateSelect(sel, [
-    { value: '', label: '— select —' },
-    ...Object.entries(config.globals.finishings).map(([k, v]) => ({ value: k, label: v.label }))
-  ])
-  document.getElementById('fin-editor').style.display = 'none'
-}
-
-function loadFinishing() {
-  const key = document.getElementById('fin-select').value
-  if (!key) { document.getElementById('fin-editor').style.display = 'none'; return }
-  const fin = config.globals.finishings[key]
-  document.getElementById('fin-key').value      = key
-  document.getElementById('fin-label').value    = fin.label
-  document.getElementById('fin-flat').value     = fin.flat
-  document.getElementById('fin-per-unit').value = fin.per_unit
-  document.getElementById('fin-editor').style.display = 'block'
-}
-
-function newFinishing() {
-  document.getElementById('fin-select').value = ''
-  document.getElementById('fin-key').value = ''
-  document.getElementById('fin-label').value = ''
-  document.getElementById('fin-flat').value = '0'
-  document.getElementById('fin-per-unit').value = '0'
-  document.getElementById('fin-editor').style.display = 'block'
-}
-
-function saveFinishing() {
-  const oldKey = document.getElementById('fin-select').value
-  const newKey = document.getElementById('fin-key').value.trim()
-  if (!newKey) { toast('Key required', 'err'); return }
-  if (oldKey && oldKey !== newKey) delete config.globals.finishings[oldKey]
-  config.globals.finishings[newKey] = {
-    label:    document.getElementById('fin-label').value.trim(),
-    flat:     parseFloat(document.getElementById('fin-flat').value),
-    per_unit: parseFloat(document.getElementById('fin-per-unit').value),
+function renderFinishings() {
+  const body = document.getElementById('finishings-body')
+  let html = `<div class="global-block">
+    <table class="price-grid">
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Label</th>
+          <th>Flat Cost ($)</th>
+          <th>Per Unit ($)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>`
+  for (const [k, v] of Object.entries(config.globals.finishings)) {
+    html += `<tr>
+      <td><input data-fin-key="${k}" data-field="key"      value="${k}" /></td>
+      <td><input data-fin-key="${k}" data-field="label"    value="${v.label}" /></td>
+      <td><input data-fin-key="${k}" data-field="flat"     type="number" step="0.01"  min="0" value="${v.flat}" /></td>
+      <td><input data-fin-key="${k}" data-field="per_unit" type="number" step="0.001" min="0" value="${v.per_unit}" /></td>
+      <td><button class="btn-mini" onclick="removeFinishing('${k}')">✕</button></td>
+    </tr>`
   }
+  html += `</tbody></table>
+    <button class="btn-secondary" style="margin-top:8px" onclick="addFinishing()">+ Add Finishing</button>
+  </div>`
+  body.innerHTML = html
+}
+
+function captureFinishings() {
+  const fin = {}
+  document.querySelectorAll('#finishings-body tbody tr').forEach(tr => {
+    const inputs = tr.querySelectorAll('input')
+    const key = inputs[0].value.trim()
+    if (!key) return
+    fin[key] = {
+      label:    inputs[1].value.trim(),
+      flat:     parseFloat(inputs[2].value) || 0,
+      per_unit: parseFloat(inputs[3].value) || 0,
+    }
+  })
+  if (Object.keys(fin).length) config.globals.finishings = fin
+}
+
+window.addFinishing = function () {
+  captureFinishings()
+  let n = 1
+  while (config.globals.finishings['new' + n]) n++
+  config.globals.finishings['new' + n] = { label: 'New Finishing', flat: 0, per_unit: 0 }
+  renderFinishings()
+}
+
+window.removeFinishing = function (k) {
+  captureFinishings()
+  delete config.globals.finishings[k]
+  renderFinishings()
+}
+
+function saveFinishings() {
+  captureFinishings()
   saveConfig().then(() => {
-    refreshFinishingSelect()
-    document.getElementById('fin-select').value = newKey
-    loadFinishing()
+    renderFinishings()
     if (currentProdKey) openProduct(currentProdKey)
   }).catch(e => toast(e.message, 'err'))
-}
-
-function deleteFinishing() {
-  const key = document.getElementById('fin-select').value
-  if (!key || !confirm(`Delete "${key}"?`)) return
-  delete config.globals.finishings[key]
-  saveConfig().then(() => refreshFinishingSelect())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
