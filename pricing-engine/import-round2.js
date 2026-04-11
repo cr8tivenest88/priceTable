@@ -205,27 +205,118 @@ function parseTickets() {
   }
 }
 
+// ── Photo Frames ─────────────────────────────────────────────────────────────
+// Layout: row 0 = size headers (spanning 2 cols each: Price, Value),
+//         row 1 = 'Price'/'Value' sub-headers,
+//         rows 2..N = Qty (col 0) + per-size (Price, Value) pairs.
+// Only the Price column matters — Value is just qty × price (redundant).
+// Size headers look like '8" x 8" l 20 x 20 cm' — we clean to '8x8'.
+function parseFrames() {
+  const rows = sheet('Photo Frames')
+  if (!rows.length) throw new Error('Photo Frames sheet empty')
+
+  const header = rows[0]
+  const blocks = []  // { col, size }
+  for (let c = 1; c < header.length; c++) {
+    const cell = String(header[c] || '').trim()
+    if (!cell) continue
+    const m = cell.match(/(\d+(?:\.\d+)?)\s*["'']?\s*x\s*(\d+(?:\.\d+)?)/i)
+    if (!m) continue
+    blocks.push({ col: c, size: `${m[1]}x${m[2]}` })
+  }
+
+  const sizes = [...new Set(blocks.map(b => b.size))]
+  const qtys  = new Set()
+  const price_table = []
+
+  for (let r = 2; r < rows.length; r++) {
+    const row = rows[r]
+    const qty = row[0]
+    if (!isNum(qty)) continue
+    qtys.add(qty)
+    for (const block of blocks) {
+      const price = row[block.col]
+      if (!isNum(price) || price <= 0) continue
+      addPrice(price_table, { size: block.size }, qty, price)
+    }
+  }
+
+  return {
+    label: 'Photo Frames',
+    mode: 'lookup',
+    lookup_keys: ['size'],
+    options: { size: sizes },
+    quantities: [...qtys].sort((a, b) => a - b),
+    price_table,
+    allowed_addons:      [],
+    allowed_finishings:  ['no_finish'],
+    allowed_turnarounds: ['regular', 'next_day', 'sameday', '1_hour'],
+  }
+}
+
+// ── Labels ───────────────────────────────────────────────────────────────────
+// Same shape as Photo Frames — QUANTITY rows × (size × [Price, Value]) cols.
+// Sizes are circular diameters like '0.5" dia | 1.27 cm' → cleaned to '0.5"'.
+function parseLabels() {
+  const rows = sheet('label')
+  if (!rows.length) throw new Error('label sheet empty')
+
+  const header = rows[0]
+  const blocks = []
+  for (let c = 1; c < header.length; c++) {
+    const cell = String(header[c] || '').trim()
+    if (!cell) continue
+    const m = cell.match(/(\d+(?:\.\d+)?)\s*["'']?\s*dia/i)
+    if (!m) continue
+    blocks.push({ col: c, size: `${m[1]}"` })
+  }
+
+  const sizes = [...new Set(blocks.map(b => b.size))]
+  const qtys  = new Set()
+  const price_table = []
+
+  for (let r = 2; r < rows.length; r++) {
+    const row = rows[r]
+    const qty = row[0]
+    if (!isNum(qty)) continue
+    qtys.add(qty)
+    for (const block of blocks) {
+      const price = row[block.col]
+      if (!isNum(price) || price <= 0) continue
+      addPrice(price_table, { size: block.size }, qty, price)
+    }
+  }
+
+  return {
+    label: 'Labels',
+    mode: 'lookup',
+    lookup_keys: ['size'],
+    options: { size: sizes },
+    quantities: [...qtys].sort((a, b) => a - b),
+    price_table,
+    allowed_addons:      [],
+    allowed_finishings:  ['no_finish'],
+    allowed_turnarounds: ['regular', 'next_day', 'sameday', '1_hour'],
+  }
+}
+
 // ── Merge into existing config ───────────────────────────────────────────────
 const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'))
 
 // Safety backup (ignored by .gitignore)
 fs.writeFileSync(BAK_PATH, JSON.stringify(config, null, 2))
 
-config.products.foamcore = parseFoamcore()
-config.products.tickets  = parseTickets()
+config.products.foamcore     = parseFoamcore()
+config.products.tickets      = parseTickets()
+config.products.photo_frames = parseFrames()
+config.products.labels       = parseLabels()
 
 fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2))
 
-const fc = config.products.foamcore
-const tk = config.products.tickets
 console.log(`Wrote ${CONFIG_PATH} (backup: ${BAK_PATH})`)
-console.log(`foamcore: ${fc.price_table.length} table rows · ${fc.quantities.length} qtys · ` +
-            `sizes=${fc.options.size.length} · thicknesses=${fc.options.thickness.length}`)
-console.log(`  thicknesses: ${fc.options.thickness.join(', ')}`)
-console.log(`  sizes:       ${fc.options.size.join(', ')}`)
-console.log(`  qtys:        ${fc.quantities.join(', ')}`)
-console.log(`tickets:  ${tk.price_table.length} table rows · ${tk.quantities.length} qtys · ` +
-            `sizes=${tk.options.size.length} · stocks=${tk.options.paper_stock.length}`)
-console.log(`  sizes:       ${tk.options.size.join(', ')}`)
-console.log(`  stocks:      ${tk.options.paper_stock.join(' | ')}`)
-console.log(`  qtys:        ${tk.quantities.join(', ')}`)
+for (const key of ['foamcore', 'tickets', 'photo_frames', 'labels']) {
+  const p = config.products[key]
+  console.log(`${key}: ${p.price_table.length} table rows · ${p.quantities.length} qtys · sizes=${p.options.size.length}`)
+  console.log(`  sizes: ${p.options.size.join(', ')}`)
+  console.log(`  qtys:  ${p.quantities.join(', ')}`)
+}
