@@ -651,16 +651,32 @@ function formatKeyValue(prod, key, value) {
 // ─────────────────────────────────────────────────────────────────────────────
 let pricesProdKey = null
 
+const PRODUCT_COLORS = [
+  '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#14b8a6', '#f97316', '#6366f1', '#06b6d4', '#84cc16',
+]
+
 function initPrices() {
-  const prodSel = document.getElementById('pr-product')
-  populateSelect(prodSel, Object.entries(config.products).map(([k, v]) => ({ value: k, label: v.label })))
-  prodSel.addEventListener('change', onPricesProductChange)
+  const bar = document.getElementById('pr-product-bar')
+  bar.innerHTML = ''
+  const entries = Object.entries(config.products)
+  entries.forEach(([k, v], i) => {
+    const btn = document.createElement('button')
+    btn.className = 'prod-btn'
+    btn.textContent = v.label
+    btn.dataset.key = k
+    btn.style.background = PRODUCT_COLORS[i % PRODUCT_COLORS.length]
+    btn.addEventListener('click', () => selectPricesProduct(k))
+    bar.appendChild(btn)
+  })
   document.getElementById('pr-save').addEventListener('click', savePrices)
-  onPricesProductChange()
+  if (entries.length) selectPricesProduct(entries[0][0])
 }
 
-function onPricesProductChange() {
-  pricesProdKey = document.getElementById('pr-product').value
+function selectPricesProduct(key) {
+  pricesProdKey = key
+  document.querySelectorAll('#pr-product-bar .prod-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.key === key))
   renderPricesGrid()
 }
 
@@ -670,10 +686,7 @@ function renderPricesGrid() {
   if (!prod) { grid.innerHTML = ''; return }
 
   if (prod.mode === 'ncr') {
-    grid.innerHTML = `<p style="color:var(--muted);padding:16px">
-      ${prod.label} uses a setup + slope cost model, not a per-cell price table.
-      Edit setup costs and marginal-per-book in the <strong>Products</strong> tab.
-    </p>`
+    grid.innerHTML = renderNcrPrices(prod)
     return
   }
 
@@ -783,6 +796,57 @@ function renderCoroplastPrices(prod) {
   return html
 }
 
+// NCR Prices editor: editable mirror of editorNcr's two tables (marginal
+// per size + setup matrix). Uses data-pr-ncr-* attributes so it doesn't
+// collide with the Products-tab editor's identical-shape inputs.
+function renderNcrPrices(prod) {
+  const sizes    = prod.options?.size || []
+  const variants = prod.options?.variant || []
+  const labelOf  = v => typeof v === 'object' ? v.label : v
+  const keyOf    = v => typeof v === 'object' ? v.key   : v
+
+  if (!sizes.length) return '<p style="color:var(--muted);padding:16px">No sizes yet — add some in the Products tab.</p>'
+  if (!variants.length) return '<p style="color:var(--muted);padding:16px">No variants yet — add some in the Products tab.</p>'
+
+  let html = `<h3 style="margin:24px 0 8px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:6px">
+    ${prod.label} — Marginal Cost per Book
+  </h3>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 6px">Per-book variable cost. Same across variants of that size.</p>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px"><div class="price-table-wrap">
+    <table class="price-grid">
+      <thead><tr><th>Size</th><th>$ / book</th></tr></thead>
+      <tbody>
+        ${sizes.map(s => `
+          <tr>
+            <td class="row-key">${s}</td>
+            <td><input type="number" step="0.01" data-pr-ncr-marginal="${escapeAttr(s)}" value="${prod.marginal_per_book?.[s] ?? ''}" /></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div></div>`
+
+  html += `<h3 style="margin:24px 0 8px;font-size:16px;border-bottom:2px solid var(--accent);padding-bottom:6px">
+    ${prod.label} — Setup Cost by Variant × Size
+  </h3>
+  <p style="font-size:12px;color:var(--muted);margin:0 0 6px">Per-job fixed cost: plate, ink, carbonless parts, etc.</p>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px"><div class="price-table-wrap">
+    <table class="price-grid">
+      <thead><tr><th>Variant</th>${sizes.map(s => `<th>${s}</th>`).join('')}</tr></thead>
+      <tbody>
+        ${variants.map(v => {
+          const vKey = keyOf(v)
+          return `<tr>
+            <td class="row-key">${labelOf(v)}</td>
+            ${sizes.map(s => `<td><input type="number" step="0.01" data-pr-ncr-setup-size="${escapeAttr(s)}" data-pr-ncr-setup-variant="${escapeAttr(vKey)}" value="${prod.setup?.[s]?.[vKey] ?? ''}" /></td>`).join('')}
+          </tr>`
+        }).join('')}
+      </tbody>
+    </table>
+  </div></div>`
+
+  return html
+}
+
 // T-shirt Prices editor: editable mirror of renderTshirtPriceTable — one
 // mini-table per (art_size × turnaround), rows = colours, cols = shirt_size ×
 // sides. Each cell edits entry.prices[1] (regular) or sameday_prices[1].
@@ -853,6 +917,25 @@ function capturePricesEdits() {
       else           prod.price_table[row].prices[qty] = v
     }
   })
+  // NCR inputs: marginal per size + setup per (size, variant)
+  if (prod.mode === 'ncr') {
+    prod.marginal_per_book = prod.marginal_per_book || {}
+    prod.setup = prod.setup || {}
+    document.querySelectorAll('#pr-grid input[data-pr-ncr-marginal]').forEach(inp => {
+      const s = inp.dataset.prNcrMarginal
+      const v = inp.value === '' ? null : parseFloat(inp.value)
+      if (v == null) delete prod.marginal_per_book[s]
+      else if (!isNaN(v)) prod.marginal_per_book[s] = v
+    })
+    document.querySelectorAll('#pr-grid input[data-pr-ncr-setup-size]').forEach(inp => {
+      const s = inp.dataset.prNcrSetupSize
+      const k = inp.dataset.prNcrSetupVariant
+      const v = inp.value === '' ? null : parseFloat(inp.value)
+      prod.setup[s] = prod.setup[s] || {}
+      if (v == null) delete prod.setup[s][k]
+      else if (!isNaN(v)) prod.setup[s][k] = v
+    })
+  }
   // T-shirt inputs: idx + turnaround → prices[1] or sameday_prices[1]
   document.querySelectorAll('#pr-grid input[data-ts-idx]').forEach(inp => {
     const idx = parseInt(inp.dataset.tsIdx)

@@ -167,6 +167,18 @@ tr:hover td { background: #f8fafc; }
 }
 .badge-blue { background: #dbeafe; color: #1d4ed8; }
 
+/* ── Product button bar (Prices tab) ─────────────────────────────────────── */
+.product-bar {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+}
+.product-bar .prod-btn {
+  padding: 8px 16px; border-radius: 8px; border: 2px solid transparent;
+  cursor: pointer; font-size: 13px; font-weight: 600;
+  color: #fff; transition: all 0.15s; opacity: 0.75;
+}
+.product-bar .prod-btn:hover { opacity: 1; transform: translateY(-1px); }
+.product-bar .prod-btn.active { opacity: 1; border-color: #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+
 /* ── Products split layout ───────────────────────────────────────────────── */
 .prod-layout {
   display: flex; gap: 0; height: calc(100vh - 64px);
