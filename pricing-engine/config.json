@@ -99,7 +99,7 @@
           "11\" x 17\""
         ],
         "paper_stock": [
-          "100lb Gloss Text / 80lb Gloss Text"
+          "100lb Glossy Text / 80lb Glossy Text"
         ],
         "folding": [
           "Half Fold / Tri-Fold / Z-Fold"
@@ -121,7 +121,7 @@
         {
           "key": {
             "size": "8.5\" x 11\"",
-            "paper_stock": "100lb Gloss Text / 80lb Gloss Text",
+            "paper_stock": "100lb Glossy Text / 80lb Glossy Text",
             "folding": "Half Fold / Tri-Fold / Z-Fold"
           },
           "prices": {
@@ -140,7 +140,7 @@
         {
           "key": {
             "size": "8.5\" x 14\"",
-            "paper_stock": "100lb Gloss Text / 80lb Gloss Text",
+            "paper_stock": "100lb Glossy Text / 80lb Glossy Text",
             "folding": "Half Fold / Tri-Fold / Z-Fold"
           },
           "prices": {
@@ -157,7 +157,7 @@
         {
           "key": {
             "size": "11\" x 17\"",
-            "paper_stock": "100lb Gloss Text / 80lb Gloss Text",
+            "paper_stock": "100lb Glossy Text / 80lb Glossy Text",
             "folding": "Half Fold / Tri-Fold / Z-Fold"
           },
           "prices": {
@@ -171,6 +171,21 @@
             "5000": 0.29
           }
         }
+      ],
+      "allowed_finishings": [
+        "no_finish",
+        "glossy_lam",
+        "matte_lam",
+        "soft_touch",
+        "spot_uv",
+        "foil_gold",
+        "embossing"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day",
+        "sameday",
+        "1_hour"
       ]
     },
     "flyer": {

@@ -1222,7 +1222,7 @@ function editorLookup(prod) {
     html += `<div class="editor-section">
       <h3>Sizes</h3>
       <div class="chip-list">
-        ${(prod.options.size || []).map(s => `<span class="chip">${s}<button onclick="removeLookupValue('size','${escapeAttr(s)}')">✕</button></span>`).join('')}
+        ${(prod.options.size || []).map(s => `<span class="chip">${s}<button onclick="renameLookupValue('size','${escapeAttr(s)}')" title="Rename" style="color:var(--accent)">✎</button><button onclick="removeLookupValue('size','${escapeAttr(s)}')" title="Remove">✕</button></span>`).join('')}
       </div>
       <div class="chip-add">
         <input id="add-size" placeholder="add new size (e.g. 9 x 12)" />
@@ -1245,7 +1245,7 @@ function editorLookup(prod) {
     html += `<div class="editor-section">
       <h3>${humanize(k)}</h3>
       <div class="chip-list">
-        ${opts.map(v => `<span class="chip">${labelOf(v)}<button onclick="removeLookupValue('${k}','${escapeAttr(keyOf(v))}')">✕</button></span>`).join('')}
+        ${opts.map(v => `<span class="chip">${labelOf(v)}<button onclick="renameLookupValue('${k}','${escapeAttr(keyOf(v))}')" title="Rename" style="color:var(--accent)">✎</button><button onclick="removeLookupValue('${k}','${escapeAttr(keyOf(v))}')" title="Remove">✕</button></span>`).join('')}
       </div>
       ${missing.length ? `
       <div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px">
@@ -1432,6 +1432,47 @@ window.restoreAllDefaultOptions = function (keyName) {
     if (!currentKeys.has(dk)) prod.options[keyName].push(d)
   }
   rebuildRowsForCombo(prod)
+  refreshEditor()
+}
+
+// Rename an existing option without losing the prices already entered for it.
+//   - String options ("100lb Gloss Text"):  rename the string everywhere,
+//     and rewrite every price_table[i].key[keyName] that matched the old value.
+//   - Object options ({key, label}):  only rename the .label (the .key stays,
+//     so price_table rows are untouched).
+window.renameLookupValue = function (keyName, currentKey) {
+  const prod = config.products[currentProdKey]
+  const opts = prod.options[keyName] || []
+  const idx  = opts.findIndex(v => (typeof v === 'object' ? v.key : v) === currentKey ||
+                                   String(typeof v === 'object' ? v.key : v) === String(currentKey))
+  if (idx === -1) { toast(`Couldn't find "${currentKey}"`, 'err'); return }
+
+  const isObject = typeof opts[idx] === 'object'
+  const currentLabel = isObject ? opts[idx].label : opts[idx]
+  const next = prompt(isObject ? 'New label:' : 'New name:', currentLabel)
+  if (next == null) return
+  const trimmed = next.trim()
+  if (!trimmed || trimmed === currentLabel) return
+
+  if (isObject) {
+    // Just a display rename — key (and therefore price_table rows) untouched
+    opts[idx].label = trimmed
+  } else {
+    // String rename — must also update every price_table row that keyed by it
+    const norm = s => String(s).trim().toLowerCase()
+    if (opts.some((v, i) => i !== idx && norm(typeof v === 'object' ? v.key : v) === norm(trimmed))) {
+      toast(`"${trimmed}" already exists`, 'err'); return
+    }
+    opts[idx] = trimmed
+    let updated = 0
+    for (const row of (prod.price_table || [])) {
+      if (String(row.key?.[keyName]) === String(currentKey)) {
+        row.key[keyName] = trimmed
+        updated++
+      }
+    }
+    toast(`Renamed — updated ${updated} price row${updated === 1 ? '' : 's'}`)
+  }
   refreshEditor()
 }
 
