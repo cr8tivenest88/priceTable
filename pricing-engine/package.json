@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "deploy": "scp -r server.js engine.js config.json package.json client gmtech:~/priceTable-1/pricing-engine/ && ssh gmtech \"cd ~/priceTable-1/pricing-engine && npm install --production && kill $(lsof -t -i:3000) 2>/dev/null; nohup node server.js > /dev/null 2>&1 &\""
+    "deploy": "scp -r server.js engine.js engine-largeformat.js config.json config-largeformat.json package.json client gmtech:~/priceTable-1/pricing-engine/ && ssh gmtech \"cd ~/priceTable-1/pricing-engine && npm install --production && kill $(lsof -t -i:3000) 2>/dev/null; nohup node server.js > /dev/null 2>&1 &\""
   },
   "dependencies": {
     "compression": "^1.8.1",
