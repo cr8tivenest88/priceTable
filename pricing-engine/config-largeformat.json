@@ -76,36 +76,9 @@
               "ratePerSqft": 1.94
             }
           ]
-        },
-        {
-          "label": "Glossy",
-          "material_name": "glossy",
-          "rates": [
-            {
-              "sqft": 1,
-              "ratePerSqft": 7.94
-            },
-            {
-              "sqft": 3,
-              "ratePerSqft": 3.83
-            },
-            {
-              "sqft": 6,
-              "ratePerSqft": 2.46
-            },
-            {
-              "sqft": 12,
-              "ratePerSqft": 2.07
-            },
-            {
-              "sqft": 16,
-              "ratePerSqft": 1.94
-            }
-          ]
         }
       ],
       "allowed_addons": [
-        "h_stand",
         "double_sided"
       ],
       "allowed_turnarounds": [
@@ -113,7 +86,8 @@
         "next_day",
         "sameday",
         "1_hour"
-      ]
+      ],
+      "markup": 50
     }
   }
 }

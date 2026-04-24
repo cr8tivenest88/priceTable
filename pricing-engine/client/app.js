@@ -1914,6 +1914,7 @@ function editorLargeFormat(key, prod) {
   </div>`
 
   // ── Product label + key ────────────────────────────────────────────────────
+  const savedMarkup = Number.isFinite(prod.markup) ? prod.markup : 0
   html += `<div class="editor-section">
     <h3>Product</h3>
     <div class="form-row">
@@ -2037,6 +2038,18 @@ function editorLargeFormat(key, prod) {
     </div>
   </div>`
 
+  // ── Markup — single source for preview, export, AND test ──────────────────
+  html += `<div class="editor-section">
+    <h3>Markup</h3>
+    <div class="form-row">
+      <div class="field" style="max-width:200px">
+        <label>Markup % <span style="color:var(--muted);font-weight:400">· used by preview, export &amp; test</span></label>
+        <input id="lf-markup" type="number" min="0" step="0.5" value="${savedMarkup}" />
+      </div>
+    </div>
+    <p style="color:var(--muted);font-size:11px;margin:6px 0 0">Save the product after changing this so preview/export pick it up.</p>
+  </div>`
+
   // ── Test-price panel ───────────────────────────────────────────────────────
   // Allowed addons (after the Available Add-ons block has been resolved above)
   // are auto-included in the test, ticked by default. Untick any you want to
@@ -2065,10 +2078,6 @@ function editorLargeFormat(key, prod) {
         <select id="lf-test-turnaround">
           ${tnKeys.map(k => `<option value="${escapeAttr(k)}">${escapeAttr(config.globals.turnaround[k].label)}</option>`).join('')}
         </select>
-      </div>
-      <div class="field">
-        <label>Markup %</label>
-        <input id="lf-test-markup" type="number" min="0" value="0" />
       </div>
     </div>
     ${adList.length ? `
@@ -2301,6 +2310,8 @@ function captureLfEdits() {
   if (!prod) return
   const labelEl = document.getElementById('lf-label')
   if (labelEl) prod.label = labelEl.value.trim() || currentLfKey
+  const markupEl = document.getElementById('lf-markup')
+  if (markupEl) prod.markup = Math.max(0, Number(markupEl.value) || 0)
   captureLfSizeEdits()
   captureLfMaterialEdits()
   // allowed_* — empty list means "user explicitly unticked all"
@@ -2407,7 +2418,7 @@ window.runLfTestPrice = async function () {
     materialName: document.getElementById('lf-test-material').value,
     qty:          Number(document.getElementById('lf-test-qty').value) || 1,
     turnaround:   document.getElementById('lf-test-turnaround').value,
-    markup:       Number(document.getElementById('lf-test-markup').value) || 0,
+    markup:       Number(document.getElementById('lf-markup').value) || 0,
   }
   const out = document.getElementById('lf-test-result')
   out.innerHTML = '<p style="color:var(--muted);font-size:12px">Calculating…</p>'
@@ -2507,18 +2518,19 @@ window.previewLfXlsx = async function (materialName) {
     await api('PUT', '/api/largeformat-config', lfConfig)
   } catch (e) { toast(e.message, 'err'); return }
 
-  const payload = { product: currentLfKey, markup: 0 }
+  const prod = lfConfig.products[currentLfKey]
+  const payload = { product: currentLfKey, markup: Number(prod?.markup) || 0 }
   if (materialName) payload.material = materialName
 
   try {
     const data = await api('POST', '/api/largeformat-preview', payload)
-    showLfPreviewModal(data, materialName)
+    showLfPreviewModal(data, materialName, payload.markup)
   } catch (e) {
     toast(e.message, 'err')
   }
 }
 
-function showLfPreviewModal(data, materialName) {
+function showLfPreviewModal(data, materialName, markup) {
   const money = n => (n == null || n === '') ? '' : `$${Number(n).toFixed(2)}`
   // One section per material
   const sections = data.materials.map(mat => {
@@ -2580,7 +2592,7 @@ function showLfPreviewModal(data, materialName) {
       <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
         <div>
           <div style="font-size:16px;font-weight:700">Preview · ${escapeAttr(data.productLabel)}</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:2px">${data.materials.length} material${data.materials.length === 1 ? '' : 's'} · ${data.materials[0]?.rows.length || 0} sizes · prices include all allowed turnarounds</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${data.materials.length} material${data.materials.length === 1 ? '' : 's'} · prices include all allowed turnarounds${markup ? ` · <strong style="color:var(--accent)">+${markup}% markup applied</strong>` : ' · <em>0% markup</em>'}</div>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn-primary" onclick="exportLfXlsx(${materialName ? `'${escapeAttr(materialName)}'` : ''})">⬇ Download .xlsx</button>
@@ -2612,7 +2624,8 @@ window.exportLfXlsx = async function (materialName) {
     await api('PUT', '/api/largeformat-config', lfConfig)
   } catch (e) { toast(e.message, 'err'); return }
 
-  const payload = { product: currentLfKey, markup: 0 }
+  const prod = lfConfig.products[currentLfKey]
+  const payload = { product: currentLfKey, markup: Number(prod?.markup) || 0 }
   if (materialName) payload.material = materialName
 
   try {
