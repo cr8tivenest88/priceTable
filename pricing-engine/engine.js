@@ -443,4 +443,8 @@ function resolveProduct(config, key) {
 
 function round(n) { return Math.round(n * 100) / 100 }
 
-module.exports = { calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig }
+module.exports = {
+  calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig,
+  // Helpers reused by engine-largeformat.js
+  applyAddons, turnaroundMultiplier, allowed, round,
+}

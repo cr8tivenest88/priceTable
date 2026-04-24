@@ -1,0 +1,119 @@
+{
+  "products": {
+    "lf_banners": {
+      "label": "Banners (Large Format)",
+      "quantities": [
+        1,
+        2,
+        5,
+        10,
+        25,
+        50,
+        100,
+        250,
+        500
+      ],
+      "sizes": [
+        {
+          "sizeName": "6x24",
+          "width": 6,
+          "height": 24
+        },
+        {
+          "sizeName": "12x12",
+          "width": 12,
+          "height": 12
+        },
+        {
+          "sizeName": "12x36",
+          "width": 12,
+          "height": 36
+        },
+        {
+          "sizeName": "24x36",
+          "width": 24,
+          "height": 36
+        },
+        {
+          "sizeName": "36x48",
+          "width": 36,
+          "height": 48
+        },
+        {
+          "sizeName": "48x48",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "sizeName": "120x96",
+          "width": 120,
+          "height": 96
+        }
+      ],
+      "materials": [
+        {
+          "label": "Matte Vinyl",
+          "material_name": "matte_vinyl",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 7.94
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 3.83
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 2.46
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.07
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 1.94
+            }
+          ]
+        },
+        {
+          "label": "Glossy",
+          "material_name": "glossy",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 7.94
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 3.83
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 2.46
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.07
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 1.94
+            }
+          ]
+        }
+      ],
+      "allowed_addons": [
+        "h_stand",
+        "double_sided"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day",
+        "sameday",
+        "1_hour"
+      ]
+    }
+  }
+}

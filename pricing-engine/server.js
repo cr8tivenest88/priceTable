@@ -5,6 +5,9 @@ const fs          = require('fs')
 const path        = require('path')
 const XLSX        = require('xlsx')
 const { calculatePrice, buildPriceTable, generateAllCombos, generateAllCombosMulti, loadConfig } = require('./engine')
+const { calculateLargeFormat, loadLargeFormatConfig } = require('./engine-largeformat')
+
+const LF_CONFIG_PATH = path.join(__dirname, 'config-largeformat.json')
 
 const BACKUP_DIR  = path.join(__dirname, 'backups')
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR)
@@ -42,8 +45,16 @@ function createBackup(label) {
     timestamp: new Date().toISOString(),
   }
   const configData = fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8')
+  // Snapshot the Large Format config alongside the main one so restores are
+  // coherent. Older backups that lack this field still restore cleanly.
+  let lfConfigData = null
+  if (fs.existsSync(LF_CONFIG_PATH)) {
+    lfConfigData = fs.readFileSync(LF_CONFIG_PATH, 'utf8')
+  }
   const backupPath = path.join(BACKUP_DIR, `${id}.json`)
-  fs.writeFileSync(backupPath, JSON.stringify({ meta, config: JSON.parse(configData) }, null, 2))
+  const payload = { meta, config: JSON.parse(configData) }
+  if (lfConfigData) payload.largeFormatConfig = JSON.parse(lfConfigData)
+  fs.writeFileSync(backupPath, JSON.stringify(payload, null, 2))
   return meta
 }
 
@@ -94,6 +105,9 @@ app.post('/api/restore/:id', (req, res) => {
     createBackup('Before restore')
     const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'))
     fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(backup.config, null, 2))
+    if (backup.largeFormatConfig) {
+      fs.writeFileSync(LF_CONFIG_PATH, JSON.stringify(backup.largeFormatConfig, null, 2))
+    }
     res.json({ ok: true, restored: backup.meta })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -383,6 +397,222 @@ app.post('/api/export-xlsx', (req, res) => {
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
     const safeName = `${productCfg.label}${size ? '-' + size : ''}-${sides || 1}sided.xlsx`
       .replace(/[^a-z0-9.-]+/gi, '_')
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+    res.send(buf)
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// ── Large Format endpoints ───────────────────────────────────────────────────
+
+// GET — return the parsed config-largeformat.json
+app.get('/api/largeformat-config', (req, res) => {
+  try {
+    res.json(loadLargeFormatConfig())
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// PUT — save the whole Large Format config. Auto-backup (of both configs)
+// happens first via createBackup.
+app.put('/api/largeformat-config', (req, res) => {
+  try {
+    createBackup('Before LF save')
+    fs.writeFileSync(LF_CONFIG_PATH, JSON.stringify(req.body, null, 2))
+    res.json({ ok: true })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// POST — single Large Format price calculation
+app.post('/api/largeformat-calculate', (req, res) => {
+  try {
+    res.json(calculateLargeFormat(req.body))
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// POST — return the price matrix as JSON so the client can render an HTML
+// preview before downloading. Same shape used by the xlsx export.
+// Body: { product, material? (optional — omit for all materials), markup? }
+// Returns: [{ material, materialLabel, qtys, turnarounds:[{key,label}], rows:[{ size, width, height, sqft, prices:{ tn:{ qty:price } } }] }]
+app.post('/api/largeformat-preview', (req, res) => {
+  try {
+    const { product, material, markup = 0 } = req.body || {}
+    const lf = loadLargeFormatConfig()
+    const mainConfig = loadConfig()
+    const productCfg = lf.products?.[product]
+    if (!productCfg) return res.status(400).json({ error: `Unknown Large Format product: ${product}` })
+
+    const allMaterials = productCfg.materials || []
+    const materials = material
+      ? allMaterials.filter(m => m.material_name === material)
+      : allMaterials
+    if (!materials.length) return res.status(400).json({ error: 'No materials' })
+
+    const sizes = productCfg.sizes || []
+    const allTns = Object.keys(mainConfig.globals?.turnaround || {})
+    const tns = (productCfg.allowed_turnarounds && productCfg.allowed_turnarounds.length)
+      ? productCfg.allowed_turnarounds
+      : allTns
+    const turnarounds = tns.map(k => ({ key: k, label: mainConfig.globals.turnaround[k]?.label || k }))
+    const QTY_BREAKS = (Array.isArray(productCfg.quantities) && productCfg.quantities.length)
+      ? productCfg.quantities.slice().sort((a, b) => a - b)
+      : [1, 2, 5, 10, 25, 50, 100, 250, 500]
+    // One variant per allowed add-on (plus a Base row). Single-addon rows
+    // — not all 2^N combinations — so the table stays scannable.
+    const allowedAddons = (productCfg.allowed_addons || [])
+      .filter(k => mainConfig.globals?.addons?.[k])
+    const variants = [{ label: 'Base', addons: [] }]
+    for (const k of allowedAddons) {
+      variants.push({ label: '+ ' + (mainConfig.globals.addons[k].label || k), addons: [k], addonKey: k })
+    }
+    const hasVariants = allowedAddons.length > 0
+
+    const buildPriceRow = (sz, m, addons) => {
+      const prices = {}
+      for (const tn of tns) {
+        prices[tn] = {}
+        for (const q of QTY_BREAKS) {
+          try {
+            const r = calculateLargeFormat({
+              product, sizeName: sz.sizeName, materialName: m.material_name,
+              qty: q, turnaround: tn, markup, addons,
+            })
+            prices[tn][q] = r.sellPrice
+          } catch { prices[tn][q] = null }
+        }
+      }
+      return prices
+    }
+
+    const out = []
+    for (const m of materials) {
+      const rows = []
+      for (const sz of sizes) {
+        const perPiece = (Number(sz.width) * Number(sz.height)) / 144
+        for (const v of variants) {
+          rows.push({
+            size: sz.sizeName, width: sz.width, height: sz.height,
+            sqft: Math.round(perPiece * 100) / 100,
+            variant: v.label,
+            isBase: v.addons.length === 0,
+            prices: buildPriceRow(sz, m, v.addons),
+          })
+        }
+      }
+      out.push({
+        material: m.material_name,
+        materialLabel: m.label || m.material_name,
+        qtys: QTY_BREAKS,
+        turnarounds,
+        hasVariants,
+        variants: variants.map(v => v.label),
+        rows,
+      })
+    }
+    res.json({ product, productLabel: productCfg.label || product, materials: out })
+  } catch (e) {
+    res.status(400).json({ error: e.message })
+  }
+})
+
+// POST — export a Large Format product's pricing as .xlsx.
+// Body: { product, material? (optional — omit for "all materials"), markup? }
+// Layout: one sheet per material. Rows = sizes; columns = qty break points
+// (1, 2, 5, 10, 25, 50, 100, 250, 500), one block of columns per allowed
+// turnaround. Cells show sellPrice. Header rows label turnaround × qty.
+app.post('/api/largeformat-export-xlsx', (req, res) => {
+  try {
+    const { product, material, markup = 0 } = req.body || {}
+    const lf = loadLargeFormatConfig()
+    const mainConfig = loadConfig()
+    const productCfg = lf.products?.[product]
+    if (!productCfg) return res.status(400).json({ error: `Unknown Large Format product: ${product}` })
+
+    const allMaterials = productCfg.materials || []
+    const materials = material
+      ? allMaterials.filter(m => m.material_name === material)
+      : allMaterials
+    if (!materials.length) return res.status(400).json({ error: 'No materials to export' })
+
+    const sizes = productCfg.sizes || []
+    if (!sizes.length) return res.status(400).json({ error: 'Product has no sizes' })
+
+    const allTns = Object.keys(mainConfig.globals?.turnaround || {})
+    const tns = (productCfg.allowed_turnarounds && productCfg.allowed_turnarounds.length)
+      ? productCfg.allowed_turnarounds
+      : allTns
+    const tnLabel = k => mainConfig.globals.turnaround[k]?.label || k
+
+    const QTY_BREAKS = (Array.isArray(productCfg.quantities) && productCfg.quantities.length)
+      ? productCfg.quantities.slice().sort((a, b) => a - b)
+      : [1, 2, 5, 10, 25, 50, 100, 250, 500]
+    // One variant per allowed add-on (plus a Base row). Single-addon rows.
+    const allowedAddons = (productCfg.allowed_addons || [])
+      .filter(k => mainConfig.globals?.addons?.[k])
+    const variantSpecs = [{ label: 'Base', addons: [] }]
+    for (const k of allowedAddons) {
+      variantSpecs.push({ label: '+ ' + (mainConfig.globals.addons[k].label || k), addons: [k] })
+    }
+    const hasVariants = allowedAddons.length > 0
+    const wb = XLSX.utils.book_new()
+
+    for (const m of materials) {
+      // Two header rows: turnaround spans, then qty columns underneath.
+      const baseCols = ['Size', 'Width (in)', 'Height (in)', 'sqft / piece']
+      if (hasVariants) baseCols.push('Variant')
+      const topHeader = [...baseCols]
+      const subHeader = baseCols.map(() => '')
+      for (const tn of tns) {
+        topHeader.push(tnLabel(tn))
+        for (let i = 1; i < QTY_BREAKS.length; i++) topHeader.push('')
+        for (const q of QTY_BREAKS) subHeader.push(`Qty ${q}`)
+      }
+      const aoa = [topHeader, subHeader]
+
+      for (const sz of sizes) {
+        const perPiece = (Number(sz.width) * Number(sz.height)) / 144
+        for (const v of variantSpecs) {
+          const row = [sz.sizeName, sz.width, sz.height, Math.round(perPiece * 100) / 100]
+          if (hasVariants) row.push(v.label)
+          for (const tn of tns) {
+            for (const q of QTY_BREAKS) {
+              try {
+                const r = calculateLargeFormat({
+                  product, sizeName: sz.sizeName, materialName: m.material_name,
+                  qty: q, turnaround: tn, markup, addons: v.addons,
+                })
+                row.push(r.sellPrice)
+              } catch {
+                row.push('')
+              }
+            }
+          }
+          aoa.push(row)
+        }
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      // Merge each turnaround's label across its qty columns
+      ws['!merges'] = ws['!merges'] || []
+      let col = baseCols.length
+      for (let i = 0; i < tns.length; i++) {
+        ws['!merges'].push({ s: { r: 0, c: col }, e: { r: 0, c: col + QTY_BREAKS.length - 1 } })
+        col += QTY_BREAKS.length
+      }
+      const sheetName = (m.label || m.material_name).slice(0, 30) || 'Sheet'
+      XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    }
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    const tag = material || 'all-materials'
+    const safeName = `${productCfg.label}-${tag}.xlsx`.replace(/[^a-z0-9.-]+/gi, '_')
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
     res.send(buf)

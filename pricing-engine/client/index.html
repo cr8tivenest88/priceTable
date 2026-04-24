@@ -54,6 +54,7 @@
         <button class="nav-btn active" data-tab="price-table">Price Table</button>
         <button class="nav-btn" data-tab="prices">Prices</button>
         <button class="nav-btn" data-tab="products">Products</button>
+        <button class="nav-btn" data-tab="large-format">Large Format</button>
         <button class="nav-btn" data-tab="finishings">Finishings</button>
         <button class="nav-btn" data-tab="globals">Globals</button>
         <button class="nav-btn" data-tab="backups">Backups</button>
@@ -151,6 +152,35 @@
           </div>
           <div class="prod-empty" id="prod-empty">
             <div>👈 Pick a product to edit</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── LARGE FORMAT TAB ── -->
+      <section id="tab-large-format" class="tab">
+        <div class="prod-layout">
+          <div class="prod-list-panel">
+            <div class="prod-list-header">
+              <span class="panel-title">Large Format</span>
+              <button class="btn-secondary btn-sm" id="lf-add-product" title="Add a new Large Format product">+ New</button>
+            </div>
+            <ul id="lf-list"></ul>
+          </div>
+          <div class="prod-editor-panel" id="lf-editor" style="display:none">
+            <div class="prod-editor-header">
+              <div>
+                <div class="prod-editor-title" id="lf-editor-title"></div>
+                <div class="prod-editor-sub" id="lf-editor-sub"></div>
+              </div>
+              <div class="actions" style="margin:0;display:flex;gap:8px">
+                <button class="btn-secondary btn-sm" id="lf-duplicate" title="Duplicate this product with all its sizes, materials &amp; rates">📋 Duplicate Product</button>
+                <button class="btn-primary" id="lf-save">Save</button>
+              </div>
+            </div>
+            <div id="lf-editor-body"></div>
+          </div>
+          <div class="prod-empty" id="lf-empty">
+            <div>👈 Pick a Large Format product to edit (or click + New)</div>
           </div>
         </div>
       </section>

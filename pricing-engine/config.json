@@ -32,7 +32,7 @@
       "double_sided": {
         "label": "Two-Sided Printing",
         "type": "pct_of_base",
-        "amount": 0.4
+        "amount": 4
       },
       "ncr_book_wrap": {
         "label": "NCR Book Wrap",
@@ -15728,8 +15728,7 @@
         "next_day",
         "sameday",
         "1_hour"
-      ],
-      "_lookupIndex": {}
+      ]
     }
   }
 }

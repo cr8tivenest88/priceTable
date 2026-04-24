@@ -1,6 +1,8 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 let config = {}
+let lfConfig = { products: {} }
 let currentProdKey = null
+let currentLfKey   = null
 
 // Canonical default options for products that have a fixed domain.
 // Used to offer "restore missing defaults" when the user accidentally deletes one.
@@ -54,11 +56,13 @@ function isTshirtProduct(prod) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
-  config = await api('GET', '/api/config')
+  config   = await api('GET', '/api/config')
+  lfConfig = await api('GET', '/api/largeformat-config')
   initNav()
   initPriceTable()
   initPrices()
   initProducts()
+  initLargeFormat()
   initFinishings()
   initGlobals()
   initBackups()
@@ -1783,7 +1787,9 @@ window.restoreBackup = async function (id) {
   if (!confirm('Restore this backup? (current config will be backed up first)')) return
   try {
     const result = await api('POST', `/api/restore/${id}`)
-    config = await api('GET', '/api/config')
+    config   = await api('GET', '/api/config')
+    lfConfig = await api('GET', '/api/largeformat-config')
+    renderLargeFormatList()
     toast(`Restored: ${result.restored.label} (${new Date(result.restored.timestamp).toLocaleString()})`)
     renderBackups()
   } catch (e) { toast(e.message, 'err') }
@@ -1796,6 +1802,806 @@ window.deleteBackup = async function (id) {
     toast('Backup deleted')
     renderBackups()
   } catch (e) { toast(e.message, 'err') }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LARGE FORMAT TAB — sqft-based products with {sizeName,width,height} sizes,
+// {label,material_name,sqftRangeCost} materials, and step-function rate tables.
+// Data lives in config-largeformat.json (separate from the main config).
+// ─────────────────────────────────────────────────────────────────────────────
+
+function initLargeFormat() {
+  renderLargeFormatList()
+  document.getElementById('lf-save').addEventListener('click', saveLargeFormat)
+  document.getElementById('lf-add-product').addEventListener('click', addLargeFormatProduct)
+  document.getElementById('lf-duplicate').addEventListener('click', duplicateLargeFormatProduct)
+}
+
+function renderLargeFormatList() {
+  const ul = document.getElementById('lf-list')
+  ul.innerHTML = ''
+  const entries = Object.entries(lfConfig.products || {})
+  if (!entries.length) {
+    ul.innerHTML = '<li style="padding:12px;color:var(--muted);font-size:12px">No products yet — click “+ New”.</li>'
+    return
+  }
+  for (const [key, prod] of entries) {
+    const li = document.createElement('li')
+    li.dataset.key = key
+    const matLabels = (prod.materials || []).map(m => m.label || m.material_name).filter(Boolean)
+    const matList = matLabels.length
+      ? `<ul class="lf-mat-sublist">${matLabels.map(l => `<li>${escapeAttr(l)}</li>`).join('')}</ul>`
+      : `<span class="list-sub" style="font-style:italic">no materials yet</span>`
+    li.innerHTML = `<span class="list-label">${escapeAttr(prod.label || key)}</span>${matList}`
+    li.addEventListener('click', () => openLargeFormat(key))
+    if (key === currentLfKey) li.classList.add('active')
+    ul.appendChild(li)
+  }
+}
+
+function openLargeFormat(key) {
+  currentLfKey = key
+  const prod = lfConfig.products[key]
+  if (!prod) return
+  document.querySelectorAll('#lf-list li').forEach(li => li.classList.toggle('active', li.dataset.key === key))
+  document.getElementById('lf-editor-title').textContent = prod.label || key
+  document.getElementById('lf-editor-sub').textContent   = `key: ${key} · sqft-based`
+  document.getElementById('lf-empty').style.display = 'none'
+  document.getElementById('lf-editor').style.display = 'flex'
+  document.getElementById('lf-editor-body').innerHTML = editorLargeFormat(key, prod)
+  wireLargeFormatEditor()
+}
+
+function editorLargeFormat(key, prod) {
+  const sizes     = prod.sizes     || []
+  const materials = prod.materials || []
+  const tnKeys    = Object.keys(config.globals?.turnaround || {})
+  const addonKeys = Object.keys(config.globals?.addons    || {})
+  const tnList    = Array.isArray(prod.allowed_turnarounds) ? prod.allowed_turnarounds : tnKeys
+  const adList    = Array.isArray(prod.allowed_addons)      ? prod.allowed_addons      : addonKeys
+
+  let html = `<div class="card">`
+
+  html += `<div class="note">
+    <strong>Large Format — sqft-based pricing.</strong>
+    <ul>
+      <li><strong>Sizes</strong> are stored as <code>{sizeName, width, height}</code> in inches. Per-piece sqft = (w × h) ÷ 144.</li>
+      <li><strong>Materials</strong> reference an <code>sqftRangeCost</code> key. Each row in that table is <code>{sqft, ratePerSqft}</code>.</li>
+      <li><strong>Tier lookup</strong> is step-function: total sqft across the whole order picks the highest row where <code>row.sqft ≤ totalSqft</code>. Below the smallest row, the first row's rate is used.</li>
+      <li>Turnarounds and add-ons come from the main Globals — tick which ones this product supports.</li>
+    </ul>
+  </div>`
+
+  // ── Product label + key ────────────────────────────────────────────────────
+  html += `<div class="editor-section">
+    <h3>Product</h3>
+    <div class="form-row">
+      <div class="field">
+        <label>Label</label>
+        <input id="lf-label" value="${escapeAttr(prod.label || '')}" />
+      </div>
+      <div class="field">
+        <label>Key</label>
+        <input value="${escapeAttr(key)}" disabled />
+      </div>
+      <div class="field" style="flex:0 0 auto">
+        <label>&nbsp;</label>
+        <button class="btn-mini" onclick="deleteLargeFormatProduct('${escapeAttr(key)}')">Delete Product</button>
+      </div>
+    </div>
+  </div>`
+
+  // ── Sizes — compact aligned table ──────────────────────────────────────────
+  html += `<div class="editor-section">
+    <h3>Sizes <span style="font-weight:400;color:var(--muted);font-size:12px">· inches · click ✕ to remove</span></h3>
+    <table class="price-grid" id="lf-sizes-list" style="max-width:340px;font-size:12px">
+      <thead>
+        <tr>
+          <th style="text-align:left">Size</th>
+          <th style="text-align:right">W × H (in)</th>
+          <th style="text-align:right">sqft</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${sizes.map((s, i) => {
+          const w = Number(s.width), h = Number(s.height)
+          const sq = (w * h) / 144
+          return `<tr>
+            <td style="text-align:left;font-weight:600">${escapeAttr(s.sizeName || '')}</td>
+            <td style="text-align:right;font-family:monospace;color:var(--muted)">${w} × ${h}</td>
+            <td style="text-align:right;font-family:monospace">${sq.toFixed(2)}</td>
+            <td style="text-align:center"><button class="btn-mini" onclick="removeLfSize(${i})" title="Remove">✕</button></td>
+          </tr>`
+        }).join('')}
+      </tbody>
+      <tfoot>
+        <tr style="background:#f8fafc">
+          <td style="color:var(--muted);font-style:italic;font-size:11px">auto</td>
+          <td style="text-align:right;white-space:nowrap">
+            <input id="lf-add-size-w" type="number" step="0.01" min="0" placeholder="W" style="width:48px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right" />
+            <span style="color:var(--muted)">×</span>
+            <input id="lf-add-size-h" type="number" step="0.01" min="0" placeholder="H" style="width:48px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;font-size:12px;text-align:right" />
+            <select id="lf-add-size-unit" style="padding:1px 2px;border:1px solid var(--border);border-radius:3px;font-size:11px">
+              <option value="in">in</option>
+              <option value="ft">ft</option>
+            </select>
+          </td>
+          <td style="text-align:right;font-family:monospace;color:var(--muted)" id="lf-add-sqft-preview">—</td>
+          <td style="text-align:center"><button class="btn-mini" style="background:var(--accent)" onclick="addLfSize()" title="Add size">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    <p style="color:var(--muted);font-size:11px;margin:6px 0 0">Name auto-fills as <code>WxH</code> from the inch values.</p>
+  </div>`
+
+  // ── Quantities — chip list per product ────────────────────────────────────
+  const qtys = Array.isArray(prod.quantities) ? prod.quantities.slice().sort((a, b) => a - b) : []
+  html += `<div class="editor-section">
+    <h3>Quantity Break Points <span style="font-weight:400;color:var(--muted);font-size:12px">· columns shown in preview &amp; export</span></h3>
+    <div class="chip-list" id="lf-qty-chips">
+      ${qtys.length ? qtys.map(q => `<span class="chip">${q}<button onclick="removeLfQty(${q})" title="Remove">✕</button></span>`).join('')
+        : '<span style="color:var(--muted);font-size:12px;font-style:italic">No quantities yet — using defaults [1, 2, 5, 10, 25, 50, 100, 250, 500]</span>'}
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px;align-items:center">
+      <input id="lf-add-qty" type="number" min="1" placeholder="e.g. 100" style="width:120px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" />
+      <button class="btn-secondary btn-sm" onclick="addLfQty()">+ Add</button>
+      <button class="btn-secondary btn-sm" onclick="resetLfQtys()" title="Restore the defaults">↺ Reset to defaults</button>
+    </div>
+  </div>`
+
+  // ── Materials + their rate tables — one card per material, side-by-side ────
+  html += `<div class="editor-section">
+    <h3>Materials &amp; Pricing
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="previewLfXlsx()" ${materials.length === 0 ? 'disabled' : ''}>👁 Preview All</button>
+      <button class="btn-secondary btn-sm" onclick="exportLfXlsx()" ${materials.length === 0 ? 'disabled' : ''}>⬇ Export All (.xlsx)</button>
+    </h3>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 8px">
+      Each material owns its own pricing table — strictly 1:1, no sharing. Step-function: total sqft picks the highest row where <code>row.sqft ≤ totalSqft</code>.
+    </p>
+    ${materials.length === 0 ? '<p style="color:var(--muted);font-size:12px">No materials yet — add one below.</p>' : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
+      ${materials.map((m, i) => renderMaterialCard(m, i)).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-top:12px;align-items:center">
+      <input id="lf-add-mat-label" placeholder="new material label (e.g. Matte Vinyl)" style="flex:1;max-width:300px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" />
+      <button class="btn-secondary btn-sm" onclick="addLfMaterial()">+ Add Material</button>
+      <span style="color:var(--muted);font-size:11px"><code>material_name</code> auto-fills from label</span>
+    </div>
+  </div>`
+
+  // ── Allowed turnarounds / add-ons ──────────────────────────────────────────
+  html += `<div class="editor-section">
+    <h3>Available Turnarounds
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="toggleAllChecks('lf-turnarounds', true)">All</button>
+      <button class="btn-secondary btn-sm" onclick="toggleAllChecks('lf-turnarounds', false)">None</button>
+    </h3>
+    <div class="checkbox-grid" id="lf-turnarounds">
+      ${tnKeys.map(k =>
+        `<label><input type="checkbox" value="${escapeAttr(k)}" ${tnList.includes(k) ? 'checked' : ''}/> ${escapeAttr(config.globals.turnaround[k].label)} <span style="color:var(--muted);font-size:11px">×${config.globals.turnaround[k].multiplier}</span></label>`).join('')}
+    </div>
+  </div>`
+
+  html += `<div class="editor-section">
+    <h3>Available Add-ons
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="toggleAllChecks('lf-addons', true)">All</button>
+      <button class="btn-secondary btn-sm" onclick="toggleAllChecks('lf-addons', false)">None</button>
+    </h3>
+    <p style="color:var(--muted);font-size:11px;margin:0 0 6px">Tick the add-ons this product offers. Pricing comes from the main Globals tab — shown here for reference.</p>
+    <div class="checkbox-grid" id="lf-addons">
+      ${addonKeys.map(k => {
+        const a = config.globals.addons[k]
+        return `<label title="${escapeAttr(k)}"><input type="checkbox" value="${escapeAttr(k)}" ${adList.includes(k) ? 'checked' : ''}/> ${escapeAttr(a.label)} <span style="color:var(--muted);font-size:11px">· ${formatAddonAmount(a)}</span></label>`
+      }).join('')}
+    </div>
+  </div>`
+
+  // ── Test-price panel ───────────────────────────────────────────────────────
+  // Allowed addons (after the Available Add-ons block has been resolved above)
+  // are auto-included in the test, ticked by default. Untick any you want to
+  // exclude from a particular quote.
+  html += `<div class="editor-section">
+    <h3>Test Price</h3>
+    <div class="form-row">
+      <div class="field">
+        <label>Size</label>
+        <select id="lf-test-size">
+          ${sizes.map(s => `<option value="${escapeAttr(s.sizeName)}">${escapeAttr(s.sizeName)} (${((Number(s.width)*Number(s.height))/144).toFixed(2)} sqft)</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Material</label>
+        <select id="lf-test-material">
+          ${materials.map(m => `<option value="${escapeAttr(m.material_name)}">${escapeAttr(m.label || m.material_name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Qty</label>
+        <input id="lf-test-qty" type="number" min="1" value="10" />
+      </div>
+      <div class="field">
+        <label>Turnaround</label>
+        <select id="lf-test-turnaround">
+          ${tnKeys.map(k => `<option value="${escapeAttr(k)}">${escapeAttr(config.globals.turnaround[k].label)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label>Markup %</label>
+        <input id="lf-test-markup" type="number" min="0" value="0" />
+      </div>
+    </div>
+    ${adList.length ? `
+      <div style="margin-top:8px">
+        <label style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Add-ons (auto-included — untick to exclude)</label>
+        <div class="checkbox-grid" id="lf-test-addons" style="margin-top:4px">
+          ${adList.map(k => {
+            const a = config.globals.addons[k]
+            if (!a) return ''
+            return `<label><input type="checkbox" value="${escapeAttr(k)}" checked /> ${escapeAttr(a.label)} <span style="color:var(--muted);font-size:11px">· ${formatAddonAmount(a)}</span></label>`
+          }).join('')}
+        </div>
+      </div>` : ''}
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px">
+      <button class="btn-primary" onclick="runLfTestPrice()">Calculate</button>
+      <span style="color:var(--muted);font-size:12px">Uses the currently-saved config — save first if you just edited rates.</span>
+    </div>
+    <div id="lf-test-result" style="margin-top:10px"></div>
+  </div>`
+
+  html += `</div>`
+  return html
+}
+
+// Format an addon's pricing for inline display next to its label.
+function formatAddonAmount(a) {
+  if (!a) return ''
+  if (a.type === 'flat')         return `+$${a.amount} flat`
+  if (a.type === 'flat_per_pc')  return `+$${a.amount}/pc`
+  if (a.type === 'pct_of_base')  return `+${a.amount}% of base`
+  return ''
+}
+
+function renderMaterialCard(m, i) {
+  const rates = m.rates || []
+  return `<div class="key-block" data-mat-i="${i}" style="width:260px;margin-bottom:0;flex:0 0 auto">
+    <div class="key-block-title" style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(m.label || '')}">${escapeAttr(m.label || '(unnamed)')}</span>
+      <button class="btn-mini" onclick="removeLfMaterial(${i})" title="Delete this material">✕</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeAttr(m.material_name || '')}">${escapeAttr(m.material_name || '')}</div>
+    <input data-mat-label value="${escapeAttr(m.label || '')}" placeholder="Label" style="width:100%;padding:3px 6px;border:1px solid var(--border);border-radius:3px;font-size:12px;margin-bottom:6px;box-sizing:border-box" />
+    <table class="price-grid" data-mat-rates style="font-size:11px">
+      <thead><tr><th>sqft</th><th>$/sqft</th><th></th></tr></thead>
+      <tbody>
+        ${rates.map((r, j) => `
+          <tr data-j="${j}">
+            <td><input data-rate-sqft  type="number" step="0.01"   min="0" value="${Number(r.sqft) || 0}"        style="width:60px" /></td>
+            <td><input data-rate-price type="number" step="0.0001" min="0" value="${Number(r.ratePerSqft) || 0}" style="width:60px" /></td>
+            <td><button class="btn-mini" onclick="removeLfRateRow(${i}, ${j})">✕</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="display:flex;gap:4px;margin-top:6px">
+      <button class="btn-secondary btn-sm" style="flex:1" onclick="addLfRateRow(${i})">+ Row</button>
+      <button class="btn-secondary btn-sm" onclick="duplicateLfMaterial(${i})" title="Duplicate this material with its rate table">📋 Dup</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:6px;border-top:1px solid var(--border);padding-top:6px">
+      <button class="btn-secondary btn-sm" style="flex:1" onclick="previewLfXlsx('${escapeAttr(m.material_name)}')" title="Preview the price table in-page">👁 Preview</button>
+      <button class="btn-secondary btn-sm" style="flex:1;background:var(--accent);color:#fff" onclick="exportLfXlsx('${escapeAttr(m.material_name)}')" title="Download .xlsx">⬇ Export</button>
+    </div>
+  </div>`
+}
+
+function wireLargeFormatEditor() {
+  // Live sqft preview in the add-size footer row
+  const wEl = document.getElementById('lf-add-size-w')
+  const hEl = document.getElementById('lf-add-size-h')
+  const uEl = document.getElementById('lf-add-size-unit')
+  const out = document.getElementById('lf-add-sqft-preview')
+  if (!wEl || !hEl || !uEl || !out) return
+  const update = () => {
+    let w = Number(wEl.value) || 0
+    let h = Number(hEl.value) || 0
+    if (uEl.value === 'ft') { w *= 12; h *= 12 }
+    out.textContent = (w > 0 && h > 0) ? ((w * h) / 144).toFixed(2) : '—'
+  }
+  wEl.addEventListener('input', update)
+  hEl.addEventListener('input', update)
+  uEl.addEventListener('change', update)
+}
+
+// ── Mutations (sizes) ────────────────────────────────────────────────────────
+window.addLfSize = function () {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  let w = Number(document.getElementById('lf-add-size-w').value) || 0
+  let h = Number(document.getElementById('lf-add-size-h').value) || 0
+  const unit = document.getElementById('lf-add-size-unit').value
+  if (w <= 0 || h <= 0) { toast('Fill width and height', 'err'); return }
+  if (unit === 'ft') { w *= 12; h *= 12 }
+  // Auto-derive sizeName as "WxH" using the inch values (drop trailing .00)
+  const fmt = n => Number.isInteger(n) ? String(n) : String(+n.toFixed(2))
+  const name = `${fmt(w)}x${fmt(h)}`
+  prod.sizes = prod.sizes || []
+  captureLfSizeEdits()
+  if (prod.sizes.some(s => s.sizeName === name)) { toast(`Duplicate size "${name}"`, 'err'); return }
+  prod.sizes.push({ sizeName: name, width: w, height: h })
+  openLargeFormat(currentLfKey)
+}
+
+window.removeLfSize = function (i) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  captureLfSizeEdits()
+  prod.sizes.splice(i, 1)
+  openLargeFormat(currentLfKey)
+}
+
+function captureLfSizeEdits() {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const tbl = document.getElementById('lf-sizes-table')
+  if (!tbl || !prod) return
+  const rows = tbl.querySelectorAll('tbody tr')
+  const next = []
+  rows.forEach(tr => {
+    const name = tr.querySelector('[data-size-name]')?.value.trim()
+    const w = Number(tr.querySelector('[data-size-w]')?.value) || 0
+    const h = Number(tr.querySelector('[data-size-h]')?.value) || 0
+    if (name) next.push({ sizeName: name, width: w, height: h })
+  })
+  prod.sizes = next
+}
+
+// ── Mutations (materials) ────────────────────────────────────────────────────
+window.addLfMaterial = function () {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const label = document.getElementById('lf-add-mat-label').value.trim()
+  if (!label) { toast('Fill material label', 'err'); return }
+  // Auto-derive material_name: lowercase, non-alphanum → underscore, collapse + trim
+  const name = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  if (!name) { toast('Label has no usable characters', 'err'); return }
+  captureLfEdits()
+  prod.materials = prod.materials || []
+  if (prod.materials.some(m => m.material_name === name)) { toast(`Duplicate material "${name}"`, 'err'); return }
+  // Strict 1:1 — rates live inline on the material with one starter row.
+  prod.materials.push({ label, material_name: name, rates: [{ sqft: 1, ratePerSqft: 0 }] })
+  openLargeFormat(currentLfKey)
+}
+
+window.removeLfMaterial = function (i) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  if (!confirm(`Delete material "${prod.materials[i]?.label || ''}"? Its rate table goes with it.`)) return
+  captureLfEdits()
+  prod.materials.splice(i, 1)
+  openLargeFormat(currentLfKey)
+}
+
+// Clone a material with its rate table — fastest way to add a new material
+// when the rates are similar to an existing one (just tweak after).
+window.duplicateLfMaterial = function (i) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const src = prod.materials?.[i]
+  if (!src) return
+  const newLabel = prompt('New material label:', `${src.label} (copy)`)
+  if (!newLabel) return
+  const trimmed = newLabel.trim()
+  if (!trimmed) return
+  const name = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  if (!name) { toast('Label has no usable characters', 'err'); return }
+  if (prod.materials.some(m => m.material_name === name)) { toast(`"${name}" already exists`, 'err'); return }
+  captureLfEdits()
+  prod.materials.push({
+    label: trimmed,
+    material_name: name,
+    rates: (src.rates || []).map(r => ({ sqft: r.sqft, ratePerSqft: r.ratePerSqft })),
+  })
+  openLargeFormat(currentLfKey)
+}
+
+// ── Mutations (quantities) ──────────────────────────────────────────────────
+window.addLfQty = function () {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const v = parseInt(document.getElementById('lf-add-qty').value)
+  if (!v || v < 1) { toast('Enter a positive integer', 'err'); return }
+  captureLfEdits()
+  prod.quantities = prod.quantities || []
+  if (!prod.quantities.includes(v)) prod.quantities.push(v)
+  prod.quantities.sort((a, b) => a - b)
+  openLargeFormat(currentLfKey)
+}
+
+window.removeLfQty = function (q) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  captureLfEdits()
+  prod.quantities = (prod.quantities || []).filter(x => x !== q)
+  openLargeFormat(currentLfKey)
+}
+
+window.resetLfQtys = function () {
+  if (!currentLfKey) return
+  if (!confirm('Reset to default break points [1, 2, 5, 10, 25, 50, 100, 250, 500]?')) return
+  captureLfEdits()
+  lfConfig.products[currentLfKey].quantities = [1, 2, 5, 10, 25, 50, 100, 250, 500]
+  openLargeFormat(currentLfKey)
+}
+
+// ── Mutations (rate rows) ────────────────────────────────────────────────────
+window.addLfRateRow = function (matIdx) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const m = prod.materials?.[matIdx]
+  if (!m) return
+  captureLfEdits()
+  m.rates = m.rates || []
+  m.rates.push({ sqft: 0, ratePerSqft: 0 })
+  openLargeFormat(currentLfKey)
+}
+
+window.removeLfRateRow = function (matIdx, j) {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  const m = prod.materials?.[matIdx]
+  if (!m) return
+  captureLfEdits()
+  m.rates.splice(j, 1)
+  openLargeFormat(currentLfKey)
+}
+
+// Capture every in-flight edit from the current editor DOM into lfConfig
+function captureLfEdits() {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  if (!prod) return
+  const labelEl = document.getElementById('lf-label')
+  if (labelEl) prod.label = labelEl.value.trim() || currentLfKey
+  captureLfSizeEdits()
+  captureLfMaterialEdits()
+  // allowed_* — empty list means "user explicitly unticked all"
+  const ticked = id => [...document.querySelectorAll(`#${id} input:checked`)].map(i => i.value)
+  prod.allowed_turnarounds = ticked('lf-turnarounds')
+  prod.allowed_addons      = ticked('lf-addons')
+}
+
+// Reads label + rate rows from each material card back into the model
+function captureLfMaterialEdits() {
+  if (!currentLfKey) return
+  const prod = lfConfig.products[currentLfKey]
+  if (!prod) return
+  document.querySelectorAll('[data-mat-i]').forEach(card => {
+    const i = Number(card.dataset.matI)
+    const m = prod.materials?.[i]
+    if (!m) return
+    const labelEl = card.querySelector('[data-mat-label]')
+    if (labelEl) m.label = labelEl.value.trim() || m.label
+    const rows = card.querySelectorAll('[data-mat-rates] tbody tr')
+    const next = []
+    rows.forEach(tr => {
+      const s = Number(tr.querySelector('[data-rate-sqft]')?.value)
+      const p = Number(tr.querySelector('[data-rate-price]')?.value)
+      if (!isNaN(s) && !isNaN(p)) next.push({ sqft: s, ratePerSqft: p })
+    })
+    m.rates = next.sort((a, b) => a.sqft - b.sqft)
+  })
+}
+
+// ── Product-level mutations ─────────────────────────────────────────────────
+function addLargeFormatProduct() {
+  const key = prompt('Product key (lowercase, no spaces — e.g. lf_canvas):')
+  if (!key) return
+  const clean = key.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  if (!clean) return
+  if (lfConfig.products[clean]) { toast('Key already exists', 'err'); return }
+  const label = prompt('Product label:', clean) || clean
+  lfConfig.products[clean] = {
+    label,
+    sizes: [],
+    materials: [],
+    allowed_addons: null,
+    allowed_turnarounds: null,
+  }
+  renderLargeFormatList()
+  openLargeFormat(clean)
+}
+
+// Clone the current Large Format product as a new key — perfect for spinning
+// up Canvas / Foamboard / Coroplast from the Banners template, then editing
+// rates and material list as needed.
+function duplicateLargeFormatProduct() {
+  if (!currentLfKey) { toast('Pick a product to duplicate first', 'err'); return }
+  const src = lfConfig.products[currentLfKey]
+  if (!src) return
+  const newKey = prompt('New product key (lowercase, no spaces — e.g. lf_canvas):', `${currentLfKey}_copy`)
+  if (!newKey) return
+  const cleanKey = newKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  if (!cleanKey) return
+  if (lfConfig.products[cleanKey]) { toast(`Key "${cleanKey}" already exists`, 'err'); return }
+  const newLabel = prompt('New product label:', `${src.label || currentLfKey} (copy)`) || cleanKey
+
+  captureLfEdits()
+  // Deep-clone via JSON round-trip — sizes/materials/rates/qtys/allowed_* all
+  // simple JSON, no functions or refs to preserve.
+  const clone = JSON.parse(JSON.stringify(src))
+  clone.label = newLabel.trim() || cleanKey
+  lfConfig.products[cleanKey] = clone
+  renderLargeFormatList()
+  openLargeFormat(cleanKey)
+  toast(`Duplicated to "${cleanKey}" — review & save when ready`)
+}
+
+window.deleteLargeFormatProduct = function (key) {
+  if (!confirm(`Delete Large Format product "${key}"? This cannot be undone (until you restore a backup).`)) return
+  delete lfConfig.products[key]
+  currentLfKey = null
+  document.getElementById('lf-editor').style.display = 'none'
+  document.getElementById('lf-empty').style.display = 'flex'
+  renderLargeFormatList()
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+async function saveLargeFormat() {
+  captureLfEdits()
+  try {
+    await api('PUT', '/api/largeformat-config', lfConfig)
+    toast('Saved')
+    renderLargeFormatList()
+    if (currentLfKey) openLargeFormat(currentLfKey)
+  } catch (e) {
+    toast(e.message, 'err')
+  }
+}
+
+// ── Test-price runner ───────────────────────────────────────────────────────
+window.runLfTestPrice = async function () {
+  if (!currentLfKey) return
+  const addons = [...document.querySelectorAll('#lf-test-addons input:checked')].map(i => i.value)
+  const base = {
+    product:      currentLfKey,
+    sizeName:     document.getElementById('lf-test-size').value,
+    materialName: document.getElementById('lf-test-material').value,
+    qty:          Number(document.getElementById('lf-test-qty').value) || 1,
+    turnaround:   document.getElementById('lf-test-turnaround').value,
+    markup:       Number(document.getElementById('lf-test-markup').value) || 0,
+  }
+  const out = document.getElementById('lf-test-result')
+  out.innerHTML = '<p style="color:var(--muted);font-size:12px">Calculating…</p>'
+  try {
+    // Always run "no add-ons" so the user sees the original price as a baseline.
+    // Run "with add-ons" too if any are ticked, so the delta is explicit.
+    const reqs = [api('POST', '/api/largeformat-calculate', { ...base, addons: [] })]
+    if (addons.length) reqs.push(api('POST', '/api/largeformat-calculate', { ...base, addons }))
+    const [original, withAddons] = await Promise.all(reqs)
+    out.innerHTML = renderLfTestResult(original, withAddons || null, addons)
+  } catch (e) {
+    out.innerHTML = `<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:6px;padding:10px;font-size:13px"><strong>Error:</strong> ${escapeAttr(e.message)}</div>`
+  }
+}
+
+function renderLfTestResult(original, withAddons, addonKeys) {
+  const r = original
+  const matLabel = (lfConfig.products[currentLfKey]?.materials || [])
+    .find(m => m.material_name === r.materialName)?.label || r.materialName
+  const tnLabel  = config.globals?.turnaround?.[r.turnaround]?.label || r.turnaround
+  const money    = n => `$${Number(n).toFixed(2)}`
+  const sqft     = n => Number(n).toFixed(2)
+  const addonLabels = (addonKeys || []).map(k => config.globals?.addons?.[k]?.label || k)
+
+  // Step-function explanation (same rate row for both prices — addons don't change tier)
+  const matObj = (lfConfig.products[currentLfKey]?.materials || [])
+    .find(m => m.material_name === r.materialName)
+  const rates = (matObj?.rates || []).slice().sort((a, b) => a.sqft - b.sqft)
+  const tierExplain = rates.length
+    ? `Total <strong>${sqft(r.totalSqft)} sqft</strong> falls in the <strong>$${r.ratePerSqft}/sqft</strong> tier (rates step at ${rates.map(x => x.sqft).join(', ')} sqft)`
+    : ''
+
+  // ── Two-price headline (base vs with-addons) ────────────────────────────────
+  const delta = withAddons ? (withAddons.sellPrice - r.sellPrice) : 0
+  const headline = `<div style="display:flex;gap:12px;margin-bottom:10px">
+    <div style="flex:1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Original (no add-ons)</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text);margin-top:4px">${money(r.sellPrice)}</div>
+      <div style="color:var(--muted);font-size:11px">${money(r.unitSellPrice)} / piece</div>
+    </div>
+    ${withAddons ? `
+    <div style="flex:1;background:#eff6ff;border:1px solid var(--accent);border-radius:6px;padding:10px">
+      <div style="font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:.5px">With add-ons</div>
+      <div style="font-size:22px;font-weight:700;color:var(--accent);margin-top:4px">${money(withAddons.sellPrice)}
+        <span style="font-size:12px;font-weight:500;color:#065f46">+${money(delta)}</span>
+      </div>
+      <div style="color:var(--muted);font-size:11px">${money(withAddons.unitSellPrice)} / piece</div>
+      ${addonLabels.length ? `<div style="color:var(--muted);font-size:11px;margin-top:4px">${escapeAttr(addonLabels.join(', '))}</div>` : ''}
+    </div>` : ''}
+  </div>`
+
+  // ── Side-by-side breakdown column(s) ───────────────────────────────────────
+  const breakdown = (label, p, withAddonRow) => {
+    const subtotal = p.baseCost + p.addonCost
+    return `<div style="flex:1">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${label}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <tbody>
+          <tr><td style="padding:3px 0;color:var(--muted)">Base cost</td><td style="text-align:right;font-family:monospace">${money(p.baseCost)}</td></tr>
+          ${withAddonRow ? `<tr><td style="padding:3px 0">+ Add-ons</td><td style="text-align:right;font-family:monospace">${money(p.addonCost)}</td></tr>` : ''}
+          <tr><td style="padding:3px 0;color:var(--muted)">Subtotal</td><td style="text-align:right;font-family:monospace">${money(subtotal)}</td></tr>
+          <tr><td style="padding:3px 0">× Turnaround (×${p.turnaroundMul})</td><td style="text-align:right;font-family:monospace">${money(p.totalCost)}</td></tr>
+          <tr><td style="padding:3px 0">× Markup (${p.markup}%)</td><td style="text-align:right;font-family:monospace;font-weight:600">${money(p.sellPrice)}</td></tr>
+        </tbody>
+      </table>
+    </div>`
+  }
+
+  return `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:13px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:8px">
+      <div>
+        <div style="font-weight:600">${escapeAttr(r.qty)} × ${escapeAttr(r.sizeName)} · ${escapeAttr(matLabel)}</div>
+        <div style="color:var(--muted);font-size:11px">${escapeAttr(tnLabel)} · ${r.markup}% markup</div>
+      </div>
+      <div style="text-align:right;font-size:11px;color:var(--muted);font-family:monospace">
+        ${sqft(r.perPieceSqft)} sqft/pc · ${sqft(r.totalSqft)} sqft total · ${money(r.ratePerSqft)}/sqft
+      </div>
+    </div>
+
+    ${headline}
+
+    <div style="display:flex;gap:16px;margin-top:6px">
+      ${breakdown('Original', r, false)}
+      ${withAddons ? breakdown('With add-ons', withAddons, true) : ''}
+    </div>
+
+    ${tierExplain ? `<p style="color:var(--muted);font-size:11px;margin:10px 0 0">${tierExplain}</p>` : ''}
+  </div>`
+}
+
+// ── Preview the price table (HTML) before downloading ──────────────────────
+window.previewLfXlsx = async function (materialName) {
+  if (!currentLfKey) return
+  // Auto-save so the preview reflects on-screen edits
+  try {
+    captureLfEdits()
+    await api('PUT', '/api/largeformat-config', lfConfig)
+  } catch (e) { toast(e.message, 'err'); return }
+
+  const payload = { product: currentLfKey, markup: 0 }
+  if (materialName) payload.material = materialName
+
+  try {
+    const data = await api('POST', '/api/largeformat-preview', payload)
+    showLfPreviewModal(data, materialName)
+  } catch (e) {
+    toast(e.message, 'err')
+  }
+}
+
+function showLfPreviewModal(data, materialName) {
+  const money = n => (n == null || n === '') ? '' : `$${Number(n).toFixed(2)}`
+  // One section per material
+  const sections = data.materials.map(mat => {
+    const tnHeader  = mat.turnarounds.map(tn =>
+      `<th colspan="${mat.qtys.length}" style="background:#e0e7ff">${escapeAttr(tn.label)}</th>`).join('')
+    const qtyHeader = mat.turnarounds.map(() =>
+      mat.qtys.map(q => `<th>Qty ${q}</th>`).join('')).join('')
+    const variantCol = mat.hasVariants
+      ? '<th rowspan="2" style="background:#f1f5f9">Variant</th>' : ''
+    const body = mat.rows.map(r => {
+      const cells = mat.turnarounds.map(tn =>
+        mat.qtys.map(q => `<td style="text-align:right;font-family:monospace">${money(r.prices?.[tn.key]?.[q])}</td>`).join('')
+      ).join('')
+      const variantCell = mat.hasVariants
+        ? `<td style="text-align:left;font-size:11px;padding-left:8px;${r.isBase ? 'color:var(--muted)' : 'background:#fef3c7;font-weight:600'}">${escapeAttr(r.variant || '')}</td>`
+        : ''
+      // Tint non-Base rows so add-on variants visually group with their Base
+      const rowBg = r.isBase ? '' : 'background:#fffbeb'
+      const sizeCell = r.isBase
+        ? `<td style="text-align:left;font-weight:600" rowspan="${1 + (mat.variants.length - 1)}">${escapeAttr(r.size)}</td>
+           <td style="text-align:right;font-family:monospace;color:var(--muted)" rowspan="${1 + (mat.variants.length - 1)}">${r.width} × ${r.height}</td>
+           <td style="text-align:right;font-family:monospace" rowspan="${1 + (mat.variants.length - 1)}">${r.sqft}</td>`
+        : ''
+      return `<tr style="${rowBg}">
+        ${mat.hasVariants ? sizeCell : `
+          <td style="text-align:left;font-weight:600">${escapeAttr(r.size)}</td>
+          <td style="text-align:right;font-family:monospace;color:var(--muted)">${r.width} × ${r.height}</td>
+          <td style="text-align:right;font-family:monospace">${r.sqft}</td>`}
+        ${variantCell}
+        ${cells}
+      </tr>`
+    }).join('')
+
+    return `<div style="margin-bottom:24px">
+      <h3 style="margin:0 0 8px;font-size:14px">${escapeAttr(mat.materialLabel)} <span style="color:var(--muted);font-weight:400;font-size:11px">· ${escapeAttr(mat.material)}${mat.hasVariants ? ' · ' + (mat.variants.length - 1) + ' add-on variant' + (mat.variants.length === 2 ? '' : 's') : ''}</span></h3>
+      <div style="overflow:auto;max-width:100%">
+        <table class="price-grid" style="font-size:11px;min-width:max-content">
+          <thead>
+            <tr>
+              <th rowspan="2" style="background:#f1f5f9">Size</th>
+              <th rowspan="2" style="background:#f1f5f9">W × H (in)</th>
+              <th rowspan="2" style="background:#f1f5f9">sqft / pc</th>
+              ${variantCol}
+              ${tnHeader}
+            </tr>
+            <tr>${qtyHeader}</tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`
+  }).join('')
+
+  const overlay = document.createElement('div')
+  overlay.id = 'lf-preview-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px'
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:8px;max-width:95vw;max-height:95vh;display:flex;flex-direction:column;box-shadow:0 25px 50px rgba(0,0,0,.3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-size:16px;font-weight:700">Preview · ${escapeAttr(data.productLabel)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${data.materials.length} material${data.materials.length === 1 ? '' : 's'} · ${data.materials[0]?.rows.length || 0} sizes · prices include all allowed turnarounds</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" onclick="exportLfXlsx(${materialName ? `'${escapeAttr(materialName)}'` : ''})">⬇ Download .xlsx</button>
+          <button class="btn-secondary" onclick="closeLfPreview()">✕ Close</button>
+        </div>
+      </div>
+      <div style="padding:20px;overflow:auto;flex:1">${sections}</div>
+    </div>
+  `
+  // Close on background click or Escape
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeLfPreview() })
+  document.addEventListener('keydown', lfPreviewKeyHandler)
+  document.body.appendChild(overlay)
+}
+
+function lfPreviewKeyHandler(e) { if (e.key === 'Escape') closeLfPreview() }
+window.closeLfPreview = function () {
+  const o = document.getElementById('lf-preview-overlay')
+  if (o) o.remove()
+  document.removeEventListener('keydown', lfPreviewKeyHandler)
+}
+
+// ── Excel export — single material or all materials ────────────────────────
+window.exportLfXlsx = async function (materialName) {
+  if (!currentLfKey) return
+  // Auto-save first so the export reflects whatever is currently on screen
+  try {
+    captureLfEdits()
+    await api('PUT', '/api/largeformat-config', lfConfig)
+  } catch (e) { toast(e.message, 'err'); return }
+
+  const payload = { product: currentLfKey, markup: 0 }
+  if (materialName) payload.material = materialName
+
+  try {
+    const res = await fetch('/api/largeformat-export-xlsx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(err.error || res.statusText)
+    }
+    const blob = await res.blob()
+    // Pull filename out of Content-Disposition; fall back to a sensible default
+    let filename = `${currentLfKey}-${materialName || 'all'}.xlsx`
+    const cd = res.headers.get('content-disposition') || ''
+    const m = cd.match(/filename="([^"]+)"/)
+    if (m) filename = m[1]
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast('Downloaded ' + filename)
+  } catch (e) {
+    toast(e.message, 'err')
+  }
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
