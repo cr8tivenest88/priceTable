@@ -55,6 +55,7 @@
         <button class="nav-btn" data-tab="prices">Prices</button>
         <button class="nav-btn" data-tab="products">Products</button>
         <button class="nav-btn" data-tab="large-format">Large Format</button>
+        <button class="nav-btn" data-tab="storefront-export">Storefront Export</button>
         <button class="nav-btn" data-tab="finishings">Finishings</button>
         <button class="nav-btn" data-tab="globals">Globals</button>
         <button class="nav-btn" data-tab="backups">Backups</button>
@@ -183,6 +184,56 @@
             <div>👈 Pick a Large Format product to edit (or click + New)</div>
           </div>
         </div>
+      </section>
+
+      <!-- ── STOREFRONT EXPORT TAB ── -->
+      <section id="tab-storefront-export" class="tab">
+        <h1>Storefront Export — Large Format</h1>
+        <div class="note">
+          <strong>What this does</strong>
+          <ul>
+            <li>Builds an .xlsx matching <code>import_product.xlsx</code> (OnPrintShop's product import format) from your Large Format config. Each <strong>material</strong> becomes its own product (OnPrintShop has no material concept).</li>
+          </ul>
+          <strong>Pricing — "Size based Price (Dynamic Size)" mode</strong>
+          <ul>
+            <li>Formula: <code>Total = (W × H) × price_per_sq_in × qty</code>, with W/H entered in inches.</li>
+            <li>PRODUCT_PRICE rows encode <strong>square-inch</strong> tiers from your <code>material.rates</code>. <code>qty</code>/<code>qty_to</code> are sq-in ranges, <code>price</code> is the per-sq-in rate (= <code>ratePerSqft × (1 + markup/100) ÷ 144</code>).</li>
+            <li>OnPrintShop's UI labels these columns "Size From / Size To (In Inch)" — that's its own naming, but the values are <strong>square inches</strong> (e.g. 144 = 1 sqft).</li>
+            <li>The smallest tier extends down to <strong>1 sq in</strong> so sub-1-sqft pieces (e.g. 6×6 = 36 sq in) get priced at the smallest-tier rate, matching the engine's clamp behavior.</li>
+          </ul>
+          <strong>Add-ons</strong>
+          <ul>
+            <li>Only <strong>flat per-piece</strong> add-ons are exported (Grommets, Cut-out, Easels). Each is a Checkbox with <code>apply_multiplication=yes</code> + <code>price_calculate_type=Multiply Only With Quantity</code> so OnPrintShop opens it in <strong>Quantity Based Attr</strong> mode (single price box, not 6-tier table).</li>
+            <li><strong>Percentage</strong> add-ons (e.g. Two-Sided Printing +40%) are <strong>skipped</strong> — OnPrintShop's attribute pricing is per-area-tier and doesn't represent multipliers cleanly. Set those up natively in OnPrintShop (e.g. as a Sides dropdown).</li>
+            <li>The import schema has <strong>no price column</strong> for attributes — the value is in the label (<code>Grommets (+$0.75/pc)</code>) as a hint, and you enter the real price once per attribute in OnPrintShop after import. It persists across re-imports.</li>
+          </ul>
+          <strong>Turnaround</strong>
+          <ul>
+            <li>Exported as a Dropdown option with one attribute per <code>allowed_turnaround</code>. Regular is the default. Multipliers (e.g. Next Day +20%) are encoded in the label and need manual setup in OnPrintShop.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="form-row">
+            <div class="field">
+              <label>Product</label>
+              <select id="se-product"></select>
+            </div>
+            <div class="field">
+              <label>Category Name</label>
+              <input type="text" id="se-category" value="Large Format" />
+            </div>
+            <div class="field">
+              <label>Markup % (0 = use per-product markup)</label>
+              <input type="number" id="se-markup" value="0" min="0" max="500" />
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <button class="btn-primary" id="se-refresh">↻ Refresh Preview</button>
+            <button class="btn-secondary" id="se-download">⬇ Download .xlsx</button>
+            <span id="se-info" style="font-size:12px;color:var(--muted)"></span>
+          </div>
+        </div>
+        <div id="se-preview"></div>
       </section>
 
       <!-- ── FINISHINGS TAB ── -->

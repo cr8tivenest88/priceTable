@@ -79,6 +79,255 @@
         }
       ],
       "allowed_addons": [
+        "grommet",
+        "double_sided"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day"
+      ],
+      "markup": 50
+    },
+    "coroplast_4mm": {
+      "label": "Coroplast (All thickness)",
+      "quantities": [
+        1,
+        2,
+        4,
+        8,
+        10,
+        16,
+        20,
+        24,
+        32
+      ],
+      "sizes": [
+        {
+          "sizeName": "6x24",
+          "width": 6,
+          "height": 24
+        },
+        {
+          "sizeName": "6x32",
+          "width": 6,
+          "height": 32
+        },
+        {
+          "sizeName": "6x36",
+          "width": 6,
+          "height": 36
+        },
+        {
+          "sizeName": "12x12",
+          "width": 12,
+          "height": 12
+        },
+        {
+          "sizeName": "12x16",
+          "width": 12,
+          "height": 16
+        },
+        {
+          "sizeName": "12x18",
+          "width": 12,
+          "height": 18
+        },
+        {
+          "sizeName": "12x36",
+          "width": 12,
+          "height": 36
+        },
+        {
+          "sizeName": "12x48",
+          "width": 12,
+          "height": 48
+        },
+        {
+          "sizeName": "18x24",
+          "width": 18,
+          "height": 24
+        },
+        {
+          "sizeName": "24x24",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "sizeName": "24x36",
+          "width": 24,
+          "height": 36
+        },
+        {
+          "sizeName": "24x48",
+          "width": 24,
+          "height": 48
+        },
+        {
+          "sizeName": "25x37",
+          "width": 25,
+          "height": 37
+        },
+        {
+          "sizeName": "32x48",
+          "width": 32,
+          "height": 48
+        },
+        {
+          "sizeName": "36x36",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "sizeName": "36x48",
+          "width": 36,
+          "height": 48
+        },
+        {
+          "sizeName": "48x48",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "sizeName": "48x60",
+          "width": 48,
+          "height": 60
+        },
+        {
+          "sizeName": "48x72",
+          "width": 48,
+          "height": 72
+        },
+        {
+          "sizeName": "48x96",
+          "width": 48,
+          "height": 96
+        }
+      ],
+      "materials": [
+        {
+          "label": "Coroplast 4mm",
+          "material_name": "matte_vinyl",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 7.94
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 3.83
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 2.46
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.07
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 1.94
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 1.875
+            }
+          ]
+        },
+        {
+          "label": "Coroplast 8mm",
+          "material_name": "coroplast_10mm",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 10.68
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 6.3
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 3.77
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.51
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 2.2
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 2.2
+            }
+          ]
+        },
+        {
+          "label": "Coroplast 6mm",
+          "material_name": "coroplast_8mm",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 10.09
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 5.51
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 3.39
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.32
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 2.06
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 2
+            }
+          ]
+        },
+        {
+          "label": "Coroplast 10mm n",
+          "material_name": "coroplast_10mm_n",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 11.95
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 7.42
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 4
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.54
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 2.18
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 2.06
+            }
+          ]
+        }
+      ],
+      "allowed_addons": [
+        "grommet",
+        "h_stand",
         "double_sided"
       ],
       "allowed_turnarounds": [
@@ -87,7 +336,412 @@
         "sameday",
         "1_hour"
       ],
-      "markup": 50
+      "markup": 100
+    },
+    "foamcore": {
+      "label": "Foamcore_4mm",
+      "quantities": [
+        1,
+        2,
+        4,
+        8,
+        10,
+        16,
+        20,
+        24,
+        32
+      ],
+      "sizes": [
+        {
+          "sizeName": "6x24",
+          "width": 6,
+          "height": 24
+        },
+        {
+          "sizeName": "6x32",
+          "width": 6,
+          "height": 32
+        },
+        {
+          "sizeName": "6x36",
+          "width": 6,
+          "height": 36
+        },
+        {
+          "sizeName": "12x12",
+          "width": 12,
+          "height": 12
+        },
+        {
+          "sizeName": "12x16",
+          "width": 12,
+          "height": 16
+        },
+        {
+          "sizeName": "12x18",
+          "width": 12,
+          "height": 18
+        },
+        {
+          "sizeName": "12x36",
+          "width": 12,
+          "height": 36
+        },
+        {
+          "sizeName": "12x48",
+          "width": 12,
+          "height": 48
+        },
+        {
+          "sizeName": "18x24",
+          "width": 18,
+          "height": 24
+        },
+        {
+          "sizeName": "24x24",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "sizeName": "24x36",
+          "width": 24,
+          "height": 36
+        },
+        {
+          "sizeName": "24x48",
+          "width": 24,
+          "height": 48
+        },
+        {
+          "sizeName": "25x37",
+          "width": 25,
+          "height": 37
+        },
+        {
+          "sizeName": "32x48",
+          "width": 32,
+          "height": 48
+        },
+        {
+          "sizeName": "36x36",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "sizeName": "36x48",
+          "width": 36,
+          "height": 48
+        },
+        {
+          "sizeName": "48x48",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "sizeName": "48x60",
+          "width": 48,
+          "height": 60
+        },
+        {
+          "sizeName": "48x72",
+          "width": 48,
+          "height": 72
+        },
+        {
+          "sizeName": "48x96",
+          "width": 48,
+          "height": 96
+        }
+      ],
+      "materials": [
+        {
+          "label": "Foamcore 4mm",
+          "material_name": "matte_vinyl",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 9.31
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 4.47
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 2.86
+            },
+            {
+              "sqft": 12,
+              "ratePerSqft": 2.06
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 1.85
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 1.75
+            }
+          ]
+        }
+      ],
+      "allowed_addons": [
+        "grommet",
+        "double_sided",
+        "Cut_out"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day",
+        "sameday",
+        "1_hour"
+      ],
+      "markup": 40
+    },
+    "agralic__all_thickness_": {
+      "label": "agralic__all_thickness_",
+      "sizes": [],
+      "materials": [],
+      "allowed_addons": [
+        "double_sided"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day",
+        "sameday",
+        "1_hour"
+      ],
+      "markup": 0
+    },
+    "adhesive_vinyl": {
+      "label": "Adhesive Vinyl",
+      "quantities": [
+        1,
+        5,
+        10
+      ],
+      "sizes": [
+        {
+          "sizeName": "6x24",
+          "width": 6,
+          "height": 24
+        },
+        {
+          "sizeName": "6x32",
+          "width": 6,
+          "height": 32
+        },
+        {
+          "sizeName": "6x36",
+          "width": 6,
+          "height": 36
+        },
+        {
+          "sizeName": "12x12",
+          "width": 12,
+          "height": 12
+        },
+        {
+          "sizeName": "12x16",
+          "width": 12,
+          "height": 16
+        },
+        {
+          "sizeName": "12x18",
+          "width": 12,
+          "height": 18
+        },
+        {
+          "sizeName": "12x36",
+          "width": 12,
+          "height": 36
+        },
+        {
+          "sizeName": "12x48",
+          "width": 12,
+          "height": 48
+        },
+        {
+          "sizeName": "18x24",
+          "width": 18,
+          "height": 24
+        },
+        {
+          "sizeName": "24x24",
+          "width": 24,
+          "height": 24
+        },
+        {
+          "sizeName": "24x36",
+          "width": 24,
+          "height": 36
+        },
+        {
+          "sizeName": "24x48",
+          "width": 24,
+          "height": 48
+        },
+        {
+          "sizeName": "25x37",
+          "width": 25,
+          "height": 37
+        },
+        {
+          "sizeName": "32x48",
+          "width": 32,
+          "height": 48
+        },
+        {
+          "sizeName": "36x36",
+          "width": 36,
+          "height": 36
+        },
+        {
+          "sizeName": "36x48",
+          "width": 36,
+          "height": 48
+        },
+        {
+          "sizeName": "48x48",
+          "width": 48,
+          "height": 48
+        },
+        {
+          "sizeName": "48x60",
+          "width": 48,
+          "height": 60
+        },
+        {
+          "sizeName": "48x72",
+          "width": 48,
+          "height": 72
+        },
+        {
+          "sizeName": "54x12",
+          "width": 54,
+          "height": 12
+        },
+        {
+          "sizeName": "54x24",
+          "width": 54,
+          "height": 24
+        },
+        {
+          "sizeName": "54x36",
+          "width": 54,
+          "height": 36
+        },
+        {
+          "sizeName": "54x48",
+          "width": 54,
+          "height": 48
+        },
+        {
+          "sizeName": "54x54",
+          "width": 54,
+          "height": 54
+        },
+        {
+          "sizeName": "54x60",
+          "width": 54,
+          "height": 60
+        },
+        {
+          "sizeName": "54x72",
+          "width": 54,
+          "height": 72
+        },
+        {
+          "sizeName": "54x84",
+          "width": 54,
+          "height": 84
+        },
+        {
+          "sizeName": "54x96",
+          "width": 54,
+          "height": 96
+        }
+      ],
+      "materials": [
+        {
+          "label": "Adhesive Vinyl (Glossy)",
+          "material_name": "matte_vinyl",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 24
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 9
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 4
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 3.75
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 3.5
+            },
+            {
+              "sqft": 64,
+              "ratePerSqft": 3.25
+            },
+            {
+              "sqft": 128,
+              "ratePerSqft": 3
+            }
+          ]
+        },
+        {
+          "label": "Perforated Vinyl",
+          "material_name": "perforated_vinyl",
+          "rates": [
+            {
+              "sqft": 1,
+              "ratePerSqft": 32
+            },
+            {
+              "sqft": 3,
+              "ratePerSqft": 3.8
+            },
+            {
+              "sqft": 6,
+              "ratePerSqft": 2.5
+            },
+            {
+              "sqft": 16,
+              "ratePerSqft": 2.1
+            },
+            {
+              "sqft": 32,
+              "ratePerSqft": 1.95
+            },
+            {
+              "sqft": 64,
+              "ratePerSqft": 1.85
+            },
+            {
+              "sqft": 128,
+              "ratePerSqft": 1.75
+            }
+          ]
+        }
+      ],
+      "allowed_addons": [
+        "Cut_out"
+      ],
+      "allowed_turnarounds": [
+        "regular",
+        "next_day",
+        "sameday",
+        "1_hour"
+      ],
+      "markup": 40
     }
   }
 }

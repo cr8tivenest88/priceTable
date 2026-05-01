@@ -63,6 +63,7 @@ async function boot() {
   initPrices()
   initProducts()
   initLargeFormat()
+  initStorefrontExport()
   initFinishings()
   initGlobals()
   initBackups()
@@ -2656,6 +2657,94 @@ window.exportLfXlsx = async function (materialName) {
   } catch (e) {
     toast(e.message, 'err')
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STOREFRONT EXPORT TAB — preview & download Large Format → import_product.xlsx
+// ─────────────────────────────────────────────────────────────────────────────
+function initStorefrontExport() {
+  const sel = document.getElementById('se-product')
+  const opts = [{ value: '', label: 'All Large Format Products' }]
+  for (const [k, v] of Object.entries(lfConfig.products || {})) {
+    opts.push({ value: k, label: v.label || k })
+  }
+  populateSelect(sel, opts)
+  sel.addEventListener('change', refreshStorefrontPreview)
+  document.getElementById('se-refresh').addEventListener('click', refreshStorefrontPreview)
+  document.getElementById('se-download').addEventListener('click', downloadStorefrontXlsx)
+  // Render once on first tab activation, not on boot — preview can be slow
+  // when there are many products × sizes × qtys.
+  const navBtn = document.querySelector('.nav-btn[data-tab="storefront-export"]')
+  if (navBtn) {
+    navBtn.addEventListener('click', () => {
+      if (!document.getElementById('se-preview').dataset.loaded) {
+        refreshStorefrontPreview()
+      }
+    }, { once: false })
+  }
+}
+
+function seParams() {
+  const markup   = parseFloat(document.getElementById('se-markup').value) || 0
+  const category = document.getElementById('se-category').value.trim() || 'Large Format'
+  const product  = document.getElementById('se-product').value || ''
+  const p = { markup, category }
+  if (product) p.product = product
+  return p
+}
+
+async function refreshStorefrontPreview() {
+  const info = document.getElementById('se-info')
+  const out  = document.getElementById('se-preview')
+  out.innerHTML = '<div class="loader"><div class="spinner"></div>Building preview…</div>'
+  info.textContent = ''
+  try {
+    const qs = new URLSearchParams(seParams()).toString()
+    const t0 = performance.now()
+    const data = await api('GET', '/api/largeformat-storefront-preview?' + qs)
+    const ms = Math.round(performance.now() - t0)
+    out.innerHTML = renderStorefrontPreview(data)
+    out.dataset.loaded = '1'
+    const total = Object.values(data).reduce((n, s) => n + s.rows.length, 0)
+    info.textContent = `${total} rows across ${Object.keys(data).length} sheets · built in ${ms}ms`
+  } catch (e) {
+    out.innerHTML = `<div class="note">Failed: ${e.message}</div>`
+  }
+}
+
+function renderStorefrontPreview(data) {
+  const order = ['PRODUCT_CATEGORY','PRODUCT_DETAILS','PRODUCT_SIZES','PRODUCT_PRICE','PRODUCT_GALLERY','PRODUCT_OPTION_GROUP','PRODUCT_OPTION','PRODUCT_OPTION_ATTRIBUTES']
+  return order.map(name => {
+    const sheet = data[name]
+    if (!sheet) return ''
+    const { headers, rows } = sheet
+    const showRows = rows.slice(0, 50)
+    const more = rows.length > showRows.length
+      ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">…and ${rows.length - showRows.length} more rows</div>`
+      : ''
+    const head = headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')
+    const body = showRows.map(r =>
+      '<tr>' + headers.map(h => `<td>${escapeHtml(r[h] === null || r[h] === undefined ? '' : String(r[h]))}</td>`).join('') + '</tr>'
+    ).join('') || `<tr><td colspan="${headers.length}" style="color:var(--muted);font-style:italic">(empty — headers only)</td></tr>`
+    return `<div class="editor-section">
+      <h3>${name} <span style="font-weight:400;color:var(--muted);font-size:12px">— ${rows.length} row${rows.length === 1 ? '' : 's'}</span></h3>
+      <div style="overflow-x:auto;border:1px solid var(--border);border-radius:6px">
+        <table class="price-grid" style="margin-top:0"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+      </div>
+      ${more}
+    </div>`
+  }).join('')
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]))
+}
+
+function downloadStorefrontXlsx() {
+  const qs = new URLSearchParams(seParams()).toString()
+  // Hand off to the browser as a regular GET so it streams the file straight to disk.
+  window.location.href = '/api/largeformat-storefront-export?' + qs
+  toast('Downloading…')
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

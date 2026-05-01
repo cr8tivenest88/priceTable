@@ -35,7 +35,7 @@ unit_sell      = sell_price / qty
 
 ### Worked Example
 
-500 Business Cards — 14pt Matte, Front & Back, Rounded Corners, Rush 3 Days, Glossy Lamination, 40% markup:
+500 Business Cards — 14pt Matte, Front , Rounded Corners, Rush 3 Days, Glossy Lamination, 40% markup:
 
 | Layer          | Calculation                          | Amount  |
 |----------------|--------------------------------------|---------|

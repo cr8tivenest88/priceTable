@@ -621,6 +621,239 @@ app.post('/api/largeformat-export-xlsx', (req, res) => {
   }
 })
 
+// ── Large Format → Storefront import format ──────────────────────────────────
+// Build the 8-sheet payload that matches import_product.xlsx (the storefront
+// platform's product import template). Each material in the LF config becomes
+// its own product (the storefront has no "material" concept).
+//
+// Pricing model: "Size based Price (Dynamic Size)" — Total = area × pricePerSqft × qty.
+// PRODUCT_PRICE rows therefore encode sqft tiers (qty/qty_to = sqft range,
+// price = ratePerSqft × markup). The labels say "qty" but the storefront UI
+// renders them as "Size From/To (Inch)" — confirmed against printshop import.
+function buildStorefrontPayload({ markup = 0, category = 'Large Format', product = null } = {}) {
+  const lf = loadLargeFormatConfig()
+  const mainConfig = loadConfig()
+  const allProducts = lf.products || {}
+  const products = product
+    ? (allProducts[product] ? { [product]: allProducts[product] } : {})
+    : allProducts
+
+  const categoryRows = [
+    { category_name: category, category_internal_name: '', category_url: '',
+      sort_order: 1, status: 'Active' },
+  ]
+
+  const detailRows = []
+  const sizeRows   = []
+  const priceRows  = []
+  const galleryRows = []
+  const optionGroupRows = []
+  const optionRows = []
+  const optionAttributeRows = []
+
+  // Add-ons group only — Turnaround is set up natively in OnPrintShop because
+  // its multipliers (e.g. Next Day +20%) are percentages, which OnPrintShop's
+  // import schema doesn't model.
+  optionGroupRows.push(
+    { opt_group_name: 'Add-ons', sort_order: 1, use_for: 'Both', is_collapse: 'no' },
+  )
+
+  let sortOrder = 1
+  for (const [lfKey, lfProd] of Object.entries(products)) {
+    const materials = lfProd.materials || []
+    const sizes     = lfProd.sizes     || []
+    const productMarkup = markup || lfProd.markup || 0
+    const markupMul = 1 + productMarkup / 100
+
+    for (const m of materials) {
+      const title = m.label || m.material_name
+      detailRows.push({
+        product_category:                category,
+        products_title:                  title,
+        products_internal_title:         lfKey,
+        product_url:                     '',
+        small_image:                     '',
+        large_image:                     '',
+        product_keywords:                '',
+        product_description:             '',
+        long_description:                '',
+        upload_description:              '',
+        browse_description:              '',
+        price_defining_method:           'Size based Price (Dynamic Size)',
+        page_title:                      '',
+        user_type_id:                    'All User',
+        corporate_id:                    '',
+        department_id:                   '',
+        sort_order:                      sortOrder++,
+        visible:                         'Active',
+        product_type:                    '',
+        products_draw_cutting_margins:   '',
+        products_draw_area_margins:      '',
+        default_zoom:                    '100',
+        customsize_measurement_unit:     'Inch',
+        size_visible:                    'Yes',
+        sku_number:                      '',
+        allow_free_shipping:             '',
+      })
+
+      let sizeOrder = 1
+      for (const sz of sizes) {
+        sizeRows.push({
+          products_title:  title,
+          size_title:      sz.sizeName,
+          size_width:      sz.width,
+          size_height:     sz.height,
+          weight:          '',
+          setup_cost:      '',
+          fold_type:       '',
+          fold_option:     '',
+          fold_position:   '',
+          orientation:     'Select Orientation',
+          default_size:    sizeOrder === 1 ? 'yes' : 'no',
+          sort_order:      sizeOrder++,
+        })
+      }
+
+      // Sqft tiers from material.rates → emitted as sq-INCH tiers because
+      // OnPrintShop's Dynamic Size formula is `(W × H) × price × qty` with
+      // W and H entered in inches, so the matching unit is square inches.
+      //   tier sqft → sq-in: multiply by 144
+      //   ratePerSqft → ratePerSqIn: divide by 144
+      // The "Size From / Size To (In Inch)" UI columns are then literally
+      // square inches (e.g. 144 = 1 sqft), and the price per sq-in is what
+      // gets multiplied by W × H. Rows are repeated per predefined size
+      // because OnPrintShop matches by (products_title, size_title).
+      const rates = (m.rates || [])
+        .map(r => ({ sqft: Number(r.sqft), ratePerSqft: Number(r.ratePerSqft) }))
+        .filter(r => !isNaN(r.sqft) && !isNaN(r.ratePerSqft))
+        .sort((a, b) => a.sqft - b.sqft)
+
+      for (const sz of sizes) {
+        // Upper-bound tier semantics: tier with sqft=N covers (prev.sqft, N]
+        // sqft → in sq-inches, (prev.sqft × 144, N × 144]. Last tier extends
+        // to infinity. Per-sq-in sell price = ratePerSqft × markup ÷ 144.
+        let prevSqft = 0
+        for (let i = 0; i < rates.length; i++) {
+          const tier = rates[i]
+          const isLast = i === rates.length - 1
+          const sqInFrom = i === 0 ? 1 : prevSqft * 144 + 1
+          const sqInTo   = isLast ? 999999 : tier.sqft * 144
+          const sellPerSqIn = Math.round(tier.ratePerSqft * markupMul / 144 * 10000) / 10000
+          priceRows.push({
+            products_title: title,
+            size_title:     sz.sizeName,
+            qty:            sqInFrom,
+            qty_to:         sqInTo,
+            price:          sellPerSqIn,
+            user_type_id:   'All User',
+            corporate_id:   '',
+            vendor_price:   '',
+          })
+          prevSqft = tier.sqft
+        }
+      }
+
+      galleryRows.push({
+        products_title:            title,
+        products_large_image_name: '',
+        image_title:               '',
+        sort_order:                '',
+        status:                    'InActive',
+      })
+
+      // Add-on options: one Checkbox per allowed flat-per-piece addon.
+      // Percentage-of-base addons (e.g. Two-Sided Printing +40%) are skipped
+      // because OnPrintShop's import schema can't model multipliers cleanly.
+      // Per-attribute prices also can't be imported (no price column on
+      // PRODUCT_OPTION_ATTRIBUTES) — the amount is in the label as a hint,
+      // and you set the actual price + pricing mode in OnPrintShop after
+      // import. `price_calculate_type` is left blank because OnPrintShop
+      // rejects guessed enum strings — you'll choose "Quantity Based Attr"
+      // in the UI when entering the price.
+      const allowedAddons = (lfProd.allowed_addons || [])
+        .filter(k => mainConfig.globals?.addons?.[k])
+        .filter(k => mainConfig.globals.addons[k].type === 'flat_per_pc')
+      let addonSort = 1
+      for (const k of allowedAddons) {
+        const a = mainConfig.globals.addons[k]
+        optionRows.push({
+          products_title:        title,
+          title:                 a.label || k,
+          description:           '',
+          options_type:          'Checkbox',
+          apply_multiplication:  'yes',
+          display_in_calculator: 'yes',
+          hire_designer_option:  'no',
+          required:              'no',
+          display_above_size:    'no',
+          sort_order:            addonSort++,
+          status:                'Active',
+          price_calculate_type:  '',
+          opt_group_name:        'Add-ons',
+          opt_export_group_name: '',
+        })
+        optionAttributeRows.push({
+          products_title:    title,
+          option_title:      a.label || k,
+          label:             `${a.label || k} (+$${a.amount}/pc)`,
+          default_attribute: 'no',
+          sort_order:        1,
+          status:            'Active',
+        })
+      }
+    }
+  }
+
+  return {
+    PRODUCT_CATEGORY:           { headers: ['category_name','category_internal_name','category_url','sort_order','status'], rows: categoryRows },
+    PRODUCT_DETAILS:            { headers: ['product_category','products_title','products_internal_title','product_url','small_image','large_image','product_keywords','product_description','long_description','upload_description','browse_description','price_defining_method','page_title','user_type_id','corporate_id','department_id','sort_order','visible','product_type','products_draw_cutting_margins','products_draw_area_margins','default_zoom','customsize_measurement_unit','size_visible','sku_number','allow_free_shipping'], rows: detailRows },
+    PRODUCT_SIZES:              { headers: ['products_title','size_title','size_width','size_height','weight','setup_cost','fold_type','fold_option','fold_position','orientation','default_size','sort_order'], rows: sizeRows },
+    PRODUCT_PRICE:              { headers: ['products_title','size_title','qty','qty_to','price','user_type_id','corporate_id','vendor_price'], rows: priceRows },
+    PRODUCT_GALLERY:            { headers: ['products_title','products_large_image_name','image_title','sort_order','status'], rows: galleryRows },
+    PRODUCT_OPTION_GROUP:       { headers: ['opt_group_name','sort_order','use_for','is_collapse'], rows: optionGroupRows },
+    PRODUCT_OPTION:             { headers: ['products_title','title','description','options_type','apply_multiplication','display_in_calculator','hire_designer_option','required','display_above_size','sort_order','status','price_calculate_type','opt_group_name','opt_export_group_name'], rows: optionRows },
+    PRODUCT_OPTION_ATTRIBUTES:  { headers: ['products_title','option_title','label','default_attribute','sort_order','status'], rows: optionAttributeRows },
+  }
+}
+
+// GET — preview the storefront-import payload as JSON (used by the UI)
+app.get('/api/largeformat-storefront-preview', (req, res) => {
+  try {
+    const markup   = Number(req.query.markup) || 0
+    const category = (req.query.category || 'Large Format').toString()
+    const product  = req.query.product ? req.query.product.toString() : null
+    res.json(buildStorefrontPayload({ markup, category, product }))
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// GET — download the storefront-import .xlsx
+app.get('/api/largeformat-storefront-export', (req, res) => {
+  try {
+    const markup   = Number(req.query.markup) || 0
+    const category = (req.query.category || 'Large Format').toString()
+    const product  = req.query.product ? req.query.product.toString() : null
+    const payload = buildStorefrontPayload({ markup, category, product })
+
+    const wb = XLSX.utils.book_new()
+    for (const [sheetName, { headers, rows }] of Object.entries(payload)) {
+      const aoa = [headers, ...rows.map(r => headers.map(h => r[h] ?? ''))]
+      const ws = XLSX.utils.aoa_to_sheet(aoa)
+      XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    }
+
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
+    const tag = product ? product : 'all'
+    const safeName = `largeformat-storefront-${tag}.xlsx`.replace(/[^a-z0-9.-]+/gi, '_')
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
+    res.send(buf)
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Pricing engine running at http://localhost:${PORT}`)
 })

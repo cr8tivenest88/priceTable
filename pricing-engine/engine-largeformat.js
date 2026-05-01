@@ -97,14 +97,18 @@ function calculateLargeFormat(opts) {
   if (!rates.length) throw new Error(`Material "${materialName}" has no rate rows`)
 
   const perPieceSqft = (Number(size.width) * Number(size.height)) / 144
-  const totalSqft    = perPieceSqft * qty
+  const rawSqft      = perPieceSqft * qty
+  // 1-sqft minimum floor: pieces under the smallest tier's threshold bill at
+  // that threshold (so a 6×6 piece, 0.25 sqft, charges as 1 sqft).
+  const minSqft      = rates[0].sqft
+  const totalSqft    = Math.max(rawSqft, minSqft)
 
-  // Step-function: largest row where row.sqft ≤ totalSqft. Below the smallest,
-  // clamp to the first row (the user's "hardening" — no gaps, no undefined tier).
-  let chosen = rates[0]
+  // Tier picker: smallest row where row.sqft ≥ totalSqft (upper-bound semantics
+  // — tier "3" covers (1, 3], tier "6" covers (3, 6], etc.). If totalSqft is
+  // above all thresholds, fall back to the largest tier.
+  let chosen = rates[rates.length - 1]
   for (const r of rates) {
-    if (r.sqft <= totalSqft) chosen = r
-    else break
+    if (r.sqft >= totalSqft) { chosen = r; break }
   }
   const ratePerSqft = chosen.ratePerSqft
 
