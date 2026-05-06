@@ -278,6 +278,21 @@
     </main>
   </div>
 
+  <!-- Restore preview modal -->
+  <div id="restore-preview-overlay" class="modal-overlay">
+    <div class="modal" style="width:760px;max-width:95vw">
+      <div class="modal-header">
+        <span>Preview restore: <strong id="rp-label">…</strong></span>
+        <button class="modal-close" type="button" onclick="closeRestorePreview()" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="rp-body"></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;padding:14px 24px;border-top:1px solid var(--border)">
+        <button class="btn-secondary" type="button" onclick="closeRestorePreview()">Cancel</button>
+        <button class="btn-primary"   type="button" id="rp-apply">Apply restore</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <script src="app.js" defer></script>
 </body>

@@ -96,23 +96,113 @@ app.get('/api/backups', (req, res) => {
   res.json(listBackups())
 })
 
-// POST /api/restore/:id — restore config from a backup UUID
+// POST /api/restore/:id — restore config from a backup UUID. With no body,
+// performs a full restore (legacy behavior). With { paths: ["products.flyer",
+// "globals.addons.grommet", "largeFormat.products.banner.materials", ...] },
+// only those subtrees are copied from the backup over the current config.
 app.post('/api/restore/:id', (req, res) => {
   try {
     const backupPath = path.join(BACKUP_DIR, `${req.params.id}.json`)
     if (!fs.existsSync(backupPath)) return res.status(404).json({ error: 'Backup not found' })
-    // backup current state before restoring
     createBackup('Before restore')
     const backup = JSON.parse(fs.readFileSync(backupPath, 'utf8'))
+    const paths = Array.isArray(req.body?.paths) ? req.body.paths.filter(p => typeof p === 'string' && p.length) : null
+
+    if (paths && paths.length) {
+      const current   = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'))
+      const currentLf = fs.existsSync(LF_CONFIG_PATH)
+        ? JSON.parse(fs.readFileSync(LF_CONFIG_PATH, 'utf8'))
+        : null
+      const { newConfig, newLf, lfTouched } = applySelectiveRestore(current, currentLf, backup, paths)
+      fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(newConfig, null, 2))
+      if (lfTouched && newLf) fs.writeFileSync(LF_CONFIG_PATH, JSON.stringify(newLf, null, 2))
+      return res.json({ ok: true, restored: backup.meta, mode: 'selective', appliedPaths: paths })
+    }
+
     fs.writeFileSync(path.join(__dirname, 'config.json'), JSON.stringify(backup.config, null, 2))
     if (backup.largeFormatConfig) {
       fs.writeFileSync(LF_CONFIG_PATH, JSON.stringify(backup.largeFormatConfig, null, 2))
     }
-    res.json({ ok: true, restored: backup.meta })
+    res.json({ ok: true, restored: backup.meta, mode: 'full' })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
+
+// ── Selective-restore helpers ────────────────────────────────────────────────
+
+// Copy each `paths[i]` from the backup into a clone of the current config.
+// Paths starting with "largeFormat." target the LF config; everything else
+// targets the main config. If the backup has no LF snapshot, LF paths are
+// silently skipped (mirrors full-restore semantics: no LF in backup → no LF
+// write). When the backup's value at a path is undefined, the key is
+// deleted from current — this is how "remove this product" round-trips.
+function applySelectiveRestore(currentConfig, currentLf, backup, paths) {
+  const newConfig = JSON.parse(JSON.stringify(currentConfig))
+  let newLf = currentLf ? JSON.parse(JSON.stringify(currentLf)) : null
+  let lfTouched = false
+  const LF_PREFIX = 'largeFormat.'
+  for (const p of paths) {
+    if (p.startsWith(LF_PREFIX)) {
+      if (!backup.largeFormatConfig) continue
+      newLf = newLf || {}
+      const sub = p.slice(LF_PREFIX.length)
+      setAtPath(newLf, sub, getAtPath(backup.largeFormatConfig, sub))
+      lfTouched = true
+    } else if (p === 'largeFormat') {
+      if (!backup.largeFormatConfig) continue
+      newLf = JSON.parse(JSON.stringify(backup.largeFormatConfig))
+      lfTouched = true
+    } else {
+      setAtPath(newConfig, p, getAtPath(backup.config, p))
+    }
+  }
+  return { newConfig, newLf, lfTouched }
+}
+
+// 'products.flyer.price_table[0].prices.25' → ['products','flyer','price_table',0,'prices','25']
+// Numeric segments inside [...] become numbers so we can index arrays.
+function parsePath(path) {
+  const parts = []
+  for (const seg of path.split('.')) {
+    const m = seg.match(/^([^[]*)((?:\[\d+\])*)$/)
+    if (!m) { parts.push(seg); continue }
+    if (m[1]) parts.push(m[1])
+    for (const idx of m[2].matchAll(/\[(\d+)\]/g)) parts.push(Number(idx[1]))
+  }
+  return parts
+}
+
+function getAtPath(obj, path) {
+  let cur = obj
+  for (const seg of parsePath(path)) {
+    if (cur == null) return undefined
+    cur = cur[seg]
+  }
+  return cur
+}
+
+// Sets `obj[path] = value`. Auto-creates intermediate containers
+// (object or array based on the next segment's type). If `value` is
+// undefined, deletes the key (or splices the array element).
+function setAtPath(obj, path, value) {
+  const parts = parsePath(path)
+  if (!parts.length) return
+  let cur = obj
+  for (let i = 0; i < parts.length - 1; i++) {
+    const seg  = parts[i]
+    const next = parts[i + 1]
+    if (cur[seg] == null) cur[seg] = typeof next === 'number' ? [] : {}
+    cur = cur[seg]
+  }
+  const last = parts[parts.length - 1]
+  if (value === undefined) {
+    if (Array.isArray(cur) && typeof last === 'number') cur.splice(last, 1)
+    else delete cur[last]
+  } else {
+    cur[last] = value
+  }
+}
 
 // DELETE /api/backup/:id — delete a backup
 app.delete('/api/backup/:id', (req, res) => {
@@ -125,6 +215,128 @@ app.delete('/api/backup/:id', (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+
+// GET /api/backup/:id/diff — preview what a restore would change. Returns
+// one group per logical section (globals.*, each product, each LF product)
+// with a status (changed/added/removed/unchanged), a leaf-change count, and
+// up to 10 sample diffs so the UI can render an at-a-glance preview.
+app.get('/api/backup/:id/diff', (req, res) => {
+  try {
+    const backupPath = path.join(BACKUP_DIR, `${req.params.id}.json`)
+    if (!fs.existsSync(backupPath)) return res.status(404).json({ error: 'Backup not found' })
+    const backup    = JSON.parse(fs.readFileSync(backupPath, 'utf8'))
+    const current   = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'))
+    const currentLf = fs.existsSync(LF_CONFIG_PATH)
+      ? JSON.parse(fs.readFileSync(LF_CONFIG_PATH, 'utf8'))
+      : null
+    res.json({
+      meta: backup.meta,
+      groups: buildDiffGroups(current, backup.config, currentLf, backup.largeFormatConfig || null),
+    })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
+})
+
+function buildDiffGroups(curConfig, bakConfig, curLf, bakLf) {
+  const groups = []
+  for (const sub of ['turnaround', 'addons', 'finishings']) {
+    groups.push(makeDiffGroup(
+      `globals.${sub}`, `Globals → ${sub}`,
+      curConfig.globals?.[sub], bakConfig.globals?.[sub]
+    ))
+  }
+  const prodKeys = new Set([
+    ...Object.keys(curConfig.products || {}),
+    ...Object.keys(bakConfig.products || {}),
+  ])
+  for (const k of [...prodKeys].sort()) {
+    const cur = curConfig.products?.[k]
+    const bak = bakConfig.products?.[k]
+    const label = bak?.label || cur?.label || k
+    groups.push(makeDiffGroup(`products.${k}`, `Product → ${label}`, cur, bak))
+  }
+  // Restore only writes the LF file when the backup contains one. If it
+  // doesn't, surface that so the user knows current LF won't be touched.
+  if (bakLf) {
+    const lfKeys = new Set([
+      ...Object.keys(curLf?.products || {}),
+      ...Object.keys(bakLf.products || {}),
+    ])
+    for (const k of [...lfKeys].sort()) {
+      const cur = curLf?.products?.[k]
+      const bak = bakLf.products?.[k]
+      const label = bak?.label || cur?.label || k
+      groups.push(makeDiffGroup(`largeFormat.products.${k}`, `Large Format → ${label}`, cur, bak))
+    }
+  } else {
+    groups.push({
+      path: 'largeFormat', label: 'Large Format',
+      status: 'skipped', changeCount: 0, samples: [],
+      note: 'This backup pre-dates Large Format snapshots — restore will leave the current Large Format config untouched.',
+    })
+  }
+  return groups
+}
+
+// Cap leaves per group so a 4000-cell price-table diff doesn't bloat the
+// response. Above this, the UI offers group-level restore only.
+const MAX_LEAVES_PER_GROUP = 500
+function makeDiffGroup(path, label, current, backup) {
+  if (backup === undefined && current === undefined)
+    return { path, label, status: 'unchanged', changeCount: 0, leaves: [], truncated: false }
+  if (backup === undefined)
+    return { path, label, status: 'removed', changeCount: countLeaves(current), leaves: [], truncated: false }
+  if (current === undefined)
+    return { path, label, status: 'added', changeCount: countLeaves(backup), leaves: [], truncated: false }
+  if (deepEqual(current, backup))
+    return { path, label, status: 'unchanged', changeCount: 0, leaves: [], truncated: false }
+  const all = collectLeafDiffs(current, backup)
+  return {
+    path, label, status: 'changed',
+    changeCount: all.length,
+    leaves: all.slice(0, MAX_LEAVES_PER_GROUP),
+    truncated: all.length > MAX_LEAVES_PER_GROUP,
+  }
+}
+
+function deepEqual(a, b) { return JSON.stringify(a) === JSON.stringify(b) }
+
+function countLeaves(v) {
+  if (v === null || typeof v !== 'object') return 1
+  if (Array.isArray(v)) return v.reduce((n, x) => n + countLeaves(x), 0) || 1
+  let n = 0
+  for (const k of Object.keys(v)) n += countLeaves(v[k])
+  return n
+}
+
+// Walks both objects and emits a flat list of leaf-level differences.
+// Arrays recurse element-wise so a single-cell change in price_table doesn't
+// collapse into one opaque "array changed" entry.
+function collectLeafDiffs(cur, bak, prefix = '') {
+  const out = []
+  const isObj = v => v && typeof v === 'object' && !Array.isArray(v)
+  if (isObj(cur) && isObj(bak)) {
+    const keys = new Set([...Object.keys(cur), ...Object.keys(bak)])
+    for (const k of keys) {
+      out.push(...collectLeafDiffs(cur[k], bak[k], prefix ? `${prefix}.${k}` : k))
+    }
+    return out
+  }
+  if (Array.isArray(cur) && Array.isArray(bak)) {
+    const len = Math.max(cur.length, bak.length)
+    for (let i = 0; i < len; i++) {
+      out.push(...collectLeafDiffs(cur[i], bak[i], `${prefix}[${i}]`))
+    }
+    return out
+  }
+  if (deepEqual(cur, bak)) return out
+  let kind = 'changed'
+  if (cur === undefined) kind = 'added'
+  else if (bak === undefined) kind = 'removed'
+  out.push({ path: prefix, kind, from: cur, to: bak })
+  return out
+}
 
 // GET /api/backup/:id/download — download a backup as .json file
 app.get('/api/backup/:id/download', (req, res) => {

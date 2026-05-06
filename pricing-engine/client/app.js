@@ -1802,6 +1802,7 @@ async function renderBackups() {
         <td>${b.label}</td>
         <td style="font-family:monospace;font-size:11px;color:var(--muted)" title="${b.id}">${shortId}…</td>
         <td style="text-align:center">
+          <button class="btn-secondary btn-sm" onclick="previewRestore('${b.id}')">Preview</button>
           <button class="btn-secondary btn-sm" onclick="restoreBackup('${b.id}')">Restore</button>
           <a class="btn-secondary btn-sm" href="/api/backup/${b.id}/download" style="text-decoration:none;display:inline-block">Download</a>
           <button class="btn-mini" onclick="deleteBackup('${b.id}')">Delete</button>
@@ -1844,6 +1845,319 @@ window.deleteBackup = async function (id) {
     toast('Backup deleted')
     renderBackups()
   } catch (e) { toast(e.message, 'err') }
+}
+
+// ── Restore preview & selective restore ─────────────────────────────────────
+// The diff modal shows one tree per changed/added/removed section; every node
+// is a checkbox. Default = all checked ⇒ behaves identically to a full
+// restore. Uncheck branches you want to keep at the current value, and
+// "Apply restore" submits the minimal set of paths (a parent path subsumes
+// fully-checked descendants).
+let rpDiffData = null
+
+window.previewRestore = async function (id) {
+  const overlay = document.getElementById('restore-preview-overlay')
+  const body    = document.getElementById('rp-body')
+  document.getElementById('rp-label').textContent = 'Loading…'
+  body.innerHTML = '<div class="loader"><div class="spinner"></div> Computing diff…</div>'
+  document.getElementById('rp-apply').disabled = true
+  overlay.classList.add('open')
+  try {
+    const data = await api('GET', `/api/backup/${id}/diff`)
+    const ts = new Date(data.meta.timestamp).toLocaleString()
+    document.getElementById('rp-label').textContent = `${data.meta.label} — ${ts}`
+    rpDiffData = data
+    body.innerHTML = renderDiffPreview(data.groups)
+    wireDiffTreeEvents(body)
+    updateRpApplyButton()
+    document.getElementById('rp-apply').onclick = () => applyRestoreFromPreview(id)
+  } catch (e) {
+    rpDiffData = null
+    body.innerHTML = `<p style="color:var(--danger)">${escapeHtml(e.message)}</p>`
+  }
+}
+
+window.closeRestorePreview = function () {
+  document.getElementById('restore-preview-overlay').classList.remove('open')
+  rpDiffData = null
+}
+
+async function applyRestoreFromPreview(id) {
+  const apply = document.getElementById('rp-apply')
+  apply.disabled = true
+  try {
+    const paths = collectSelectedPaths()
+    if (!paths.length) {
+      toast('Nothing selected — check at least one section.', 'err')
+      apply.disabled = false
+      return
+    }
+    const allChecked = isFullRestore()
+    const result = await api('POST', `/api/restore/${id}`, allChecked ? {} : { paths })
+    config   = await api('GET', '/api/config')
+    lfConfig = await api('GET', '/api/largeformat-config')
+    renderLargeFormatList()
+    closeRestorePreview()
+    const mode = result.mode === 'selective' ? `selective (${result.appliedPaths.length} path${result.appliedPaths.length===1?'':'s'})` : 'full'
+    toast(`Restored ${mode}: ${result.restored.label} (${new Date(result.restored.timestamp).toLocaleString()})`)
+    renderBackups()
+  } catch (e) {
+    apply.disabled = false
+    toast(e.message, 'err')
+  }
+}
+
+function renderDiffPreview(groups) {
+  const changed = groups.filter(g => g.status !== 'unchanged' && g.status !== 'skipped')
+  const skipped = groups.find(g => g.status === 'skipped')
+  const skippedNote = skipped
+    ? `<p style="margin:10px 0 0;color:var(--muted);font-size:12px">${escapeHtml(skipped.note)}</p>`
+    : ''
+  if (!changed.length) {
+    return '<p style="color:var(--muted)">No differences — this backup matches the current config.</p>' + skippedNote
+  }
+  let html = `<p style="margin:0;color:var(--muted)">All sections checked by default = full restore. Uncheck anything you want to keep at the current value.</p>
+    <div style="display:flex;justify-content:flex-end;gap:8px;font-size:12px">
+      <button type="button" class="btn-mini" data-rp-bulk="all">Check all</button>
+      <button type="button" class="btn-mini" data-rp-bulk="none">Uncheck all</button>
+    </div>
+    <div id="rp-tree" style="display:flex;flex-direction:column;gap:6px">`
+  for (const g of changed) html += renderDiffGroup(g)
+  html += '</div>' + skippedNote
+  return html
+}
+
+function renderDiffGroup(g) {
+  const colors = {
+    changed: { bg: '#fef3c7', fg: '#92400e' },
+    added:   { bg: '#dcfce7', fg: '#166534' },
+    removed: { bg: '#fee2e2', fg: '#991b1b' },
+  }
+  const c = colors[g.status] || colors.changed
+  const treeRoot = g.status === 'changed' && g.leaves?.length
+    ? buildLeafTree(g.path, g.leaves)
+    : null
+  const drillable = !!treeRoot && !g.truncated
+  const headerInner = `
+    <label style="cursor:pointer;display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+      <input type="checkbox" class="rp-node" data-path="${escapeAttr(g.path)}" data-root="1" checked />
+      <span style="display:inline-block;background:${c.bg};color:${c.fg};font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase">${g.status}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(g.label)}</span>
+      <span style="font-size:12px;color:var(--muted);white-space:nowrap">${g.changeCount} field${g.changeCount===1?'':'s'}${g.truncated?' (capped)':''}</span>
+    </label>`
+  if (!drillable) {
+    let note = ''
+    if (g.status === 'added')   note = '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Will be created on restore.</div>'
+    if (g.status === 'removed') note = '<div style="margin-top:6px;font-size:12px;color:var(--muted)">Will be deleted on restore.</div>'
+    if (g.truncated)            note = `<div style="margin-top:6px;font-size:12px;color:var(--muted)">Too many leaf differences (${g.changeCount}) to drill into — use group-level restore.</div>`
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:8px 12px">
+      <div style="display:flex;align-items:center;gap:12px">${headerInner}</div>${note}
+    </div>`
+  }
+  return `<details style="border:1px solid var(--border);border-radius:6px;padding:8px 12px">
+    <summary style="cursor:pointer;list-style:revert;display:flex;align-items:center;gap:12px">${headerInner}</summary>
+    <div style="margin:8px 0 0 22px">${renderTreeChildren(treeRoot)}</div>
+  </details>`
+}
+
+// Build a tree of nodes from a group's flat leaves. Each leaf path is
+// relative to the group root (e.g. "price_table[0].prices.25"); we tokenize
+// it into segments and attach. Internal nodes accumulate `count` so the UI
+// can show "N fields" next to each branch.
+function buildLeafTree(rootPath, leaves) {
+  const root = { fullPath: rootPath, label: '(root)', children: new Map(), count: 0, isLeaf: false }
+  for (const leaf of leaves) {
+    const segs = tokenizeLeafPath(leaf.path)
+    let node = root
+    let acc = rootPath
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i]
+      acc = appendSeg(acc, s)
+      node.count++
+      const isLast = i === segs.length - 1
+      let child = node.children.get(s.text)
+      if (!child) {
+        child = { fullPath: acc, label: s.label, children: new Map(), count: 0, isLeaf: false }
+        node.children.set(s.text, child)
+      }
+      if (isLast) {
+        child.isLeaf = true
+        child.leaf = leaf
+        child.count = 1
+      }
+      node = child
+    }
+  }
+  return root
+}
+
+function tokenizeLeafPath(path) {
+  const out = []
+  let cur = ''
+  for (let i = 0; i < path.length; i++) {
+    const c = path[i]
+    if (c === '.') { if (cur) { out.push({ text: cur, label: cur }); cur = '' } }
+    else if (c === '[') {
+      if (cur) { out.push({ text: cur, label: cur }); cur = '' }
+      const close = path.indexOf(']', i)
+      const tok = path.slice(i, close + 1)
+      out.push({ text: tok, label: tok })
+      i = close
+    } else cur += c
+  }
+  if (cur) out.push({ text: cur, label: cur })
+  return out
+}
+
+function appendSeg(prefix, seg) {
+  if (seg.text.startsWith('[')) return prefix + seg.text
+  return prefix ? prefix + '.' + seg.text : seg.text
+}
+
+function renderTreeChildren(node) {
+  const kids = [...node.children.values()]
+  if (!kids.length) return ''
+  let html = '<div style="display:flex;flex-direction:column;gap:3px">'
+  for (const k of kids) html += renderTreeNode(k)
+  html += '</div>'
+  return html
+}
+
+function renderTreeNode(node) {
+  if (node.isLeaf) {
+    const leaf = node.leaf
+    const kindColor = leaf.kind === 'added' ? '#166534' : leaf.kind === 'removed' ? '#991b1b' : '#92400e'
+    return `<label style="display:flex;align-items:center;gap:8px;font-size:12px;cursor:pointer;padding:2px 0">
+      <input type="checkbox" class="rp-node" data-path="${escapeAttr(node.fullPath)}" checked />
+      <code style="font-size:11px;color:${kindColor}">${escapeHtml(node.label)}</code>
+      <span style="color:var(--muted)">${formatDiffVal(leaf.from)}</span>
+      <span style="color:var(--muted)">→</span>
+      <span>${formatDiffVal(leaf.to)}</span>
+    </label>`
+  }
+  return `<details style="margin:0">
+    <summary style="cursor:pointer;display:flex;align-items:center;gap:8px;font-size:12px;list-style:revert">
+      <input type="checkbox" class="rp-node" data-path="${escapeAttr(node.fullPath)}" checked />
+      <code style="font-size:11px">${escapeHtml(node.label)}</code>
+      <span style="color:var(--muted)">${node.count} field${node.count===1?'':'s'}</span>
+    </summary>
+    <div style="margin:4px 0 4px 18px">${renderTreeChildren(node)}</div>
+  </details>`
+}
+
+// Cascade clicks: a parent toggle propagates to all descendants; toggling
+// a descendant updates ancestor checkboxes (checked / unchecked /
+// indeterminate). Stop propagation so clicking a checkbox doesn't also
+// toggle the surrounding <details>.
+function wireDiffTreeEvents(root) {
+  for (const cb of root.querySelectorAll('input.rp-node')) {
+    cb.addEventListener('click', e => e.stopPropagation())
+    cb.addEventListener('change', e => {
+      const target = e.target
+      const scope = target.closest('details, div')
+      if (scope) {
+        const descendants = scope.querySelectorAll('input.rp-node')
+        for (const d of descendants) {
+          if (d === target) continue
+          d.checked = target.checked
+          d.indeterminate = false
+        }
+      }
+      refreshAncestors(target)
+      updateRpApplyButton()
+    })
+  }
+  for (const btn of root.querySelectorAll('[data-rp-bulk]')) {
+    btn.addEventListener('click', () => {
+      const want = btn.dataset.rpBulk === 'all'
+      for (const cb of root.querySelectorAll('input.rp-node')) {
+        cb.checked = want
+        cb.indeterminate = false
+      }
+      updateRpApplyButton()
+    })
+  }
+}
+
+function refreshAncestors(el) {
+  let cur = el.parentElement
+  while (cur && !cur.id?.startsWith?.('rp-tree') && cur.id !== 'rp-body') {
+    if (cur.tagName === 'DETAILS' || cur.classList?.contains?.('rp-group-row')) {
+      // Find this scope's own checkbox (its summary's, or its first child)
+      const ownCb = cur.querySelector(':scope > summary input.rp-node, :scope > div input.rp-node')
+      if (ownCb) {
+        const descendants = cur.querySelectorAll('input.rp-node')
+        let checked = 0, total = 0
+        for (const d of descendants) {
+          if (d === ownCb) continue
+          total++
+          if (d.checked) checked++
+        }
+        if (total === 0) { /* leaf — leave as-is */ }
+        else if (checked === 0) { ownCb.checked = false; ownCb.indeterminate = false }
+        else if (checked === total) { ownCb.checked = true; ownCb.indeterminate = false }
+        else { ownCb.checked = false; ownCb.indeterminate = true }
+      }
+    }
+    cur = cur.parentElement
+  }
+}
+
+// Walk the tree top-down, emitting the path for each checkbox that's both
+// checked and has no unchecked descendants. That subsumes nested checks
+// into the shortest set of paths the server needs to apply.
+function collectSelectedPaths() {
+  const tree = document.getElementById('rp-tree')
+  if (!tree) return []
+  const out = []
+  function walk(scope) {
+    for (const child of scope.children) {
+      const cb = child.querySelector(':scope > label > input.rp-node, :scope > summary > label > input.rp-node, :scope > summary input.rp-node')
+      const hasNested = child.querySelectorAll('input.rp-node').length > 1
+      if (!cb) {
+        // Container without its own checkbox — recurse
+        const inner = child.querySelector(':scope > div')
+        if (inner) walk(inner)
+        continue
+      }
+      if (cb.checked && !cb.indeterminate) {
+        out.push(cb.dataset.path)
+      } else if (cb.indeterminate || (cb.checked === false && hasNested)) {
+        const inner = child.querySelector(':scope > div, :scope > details > div')
+        if (inner) walk(inner)
+      }
+    }
+  }
+  walk(tree)
+  return out
+}
+
+function isFullRestore() {
+  const tree = document.getElementById('rp-tree')
+  if (!tree) return false
+  for (const cb of tree.querySelectorAll('input.rp-node[data-root="1"]')) {
+    if (!cb.checked || cb.indeterminate) return false
+  }
+  return true
+}
+
+function updateRpApplyButton() {
+  const apply = document.getElementById('rp-apply')
+  const paths = collectSelectedPaths()
+  apply.disabled = paths.length === 0
+  apply.textContent = isFullRestore()
+    ? `Apply full restore (${paths.length} section${paths.length===1?'':'s'})`
+    : `Apply selective restore (${paths.length} path${paths.length===1?'':'s'})`
+}
+
+function formatDiffVal(v) {
+  if (v === undefined) return '<em style="color:var(--muted)">—</em>'
+  if (v === null)      return '<em style="color:var(--muted)">null</em>'
+  if (typeof v === 'object') {
+    const s = JSON.stringify(v)
+    return `<code style="font-size:11px">${escapeHtml(s.length > 80 ? s.slice(0, 80) + '…' : s)}</code>`
+  }
+  return `<code style="font-size:11px">${escapeHtml(String(v))}</code>`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
