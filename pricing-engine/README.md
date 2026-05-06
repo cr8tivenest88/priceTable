@@ -12,12 +12,15 @@ This file is just the "how do I do X again?" cheat sheet.
 | `npm start` | Run the server locally on port 3000 |
 | `npm run backup` | Pull latest `config.json` + `config-largeformat.json` from gmtech server (bash) |
 | `npm run backup:ps` | Same as above, PowerShell version |
-| `npm run deploy` | Push local code + configs to gmtech and restart the server |
+| `npm run deploy` | Push local **code only** to gmtech and restart. Snapshots remote configs to `backups/*.remote.*.bak` first as a safety net. **Does not touch remote configs.** |
+| `npm run deploy:push-config` | Escape hatch — explicitly `scp` local `config.json` + `config-largeformat.json` to gmtech. Use only when you intentionally want to overwrite live configs (e.g. restoring from a backup). |
 
 After a backup, check what changed:
 ```bash
 git diff config.json config-largeformat.json
 ```
+
+> **Why deploy no longer pushes configs:** the server is the source of truth for prices. The old deploy script `scp`'d local `config.json` over the live one, which silently wiped any admin-UI edits made since the last `npm run backup`. The flyer prices entered May 1 2026 were lost this way. Now deploy only ships code, and configs flow remote → local via `npm run backup`.
 
 ---
 
@@ -46,7 +49,8 @@ ssh gmtech "tail -f ~/priceTable-1/pricing-engine/nohup.out"   # tail logs
 |---|---|
 | `config.json` | Standard products (business cards, flyers, stickers, etc.) |
 | `config-largeformat.json` | Large format products (canvas, posters, banners — sqft pricing) |
-| `backups/*.bak` | Auto-saved before every `npm run backup` |
+| `backups/*.{ts}.bak` | Local config snapshots saved before each `npm run backup` (pre-overwrite copies of local) |
+| `backups/*.remote.{ts}.bak` | Remote config snapshots saved before each `npm run deploy` (read-only — local file is never touched) |
 
 The **server is the source of truth** — edits happen in the live admin UI, then `npm run backup` pulls them down to commit locally.
 
@@ -64,9 +68,14 @@ git commit -m "..."
 
 ### "I changed code locally and want it live"
 ```bash
-npm run backup        # first, grab any live config edits so deploy doesn't overwrite them
-git status            # confirm configs are clean / committed
-npm run deploy
+npm run deploy        # ships code only; remote configs are left alone
+```
+
+### "I need to push a config from local to live" (rare — e.g. restoring a lost backup)
+```bash
+npm run backup                # pull current remote first so you can diff
+git diff config.json          # confirm your local really is what you want live
+npm run deploy:push-config    # overwrite remote configs with local
 ```
 
 ### "I want to test locally before deploying"

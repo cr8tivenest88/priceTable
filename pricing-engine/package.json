@@ -7,7 +7,8 @@
     "start": "node server.js",
     "backup": "bash pull-configs.sh",
     "backup:ps": "powershell -ExecutionPolicy Bypass -File pull-configs.ps1",
-    "deploy": "scp -r server.js engine.js engine-largeformat.js config.json config-largeformat.json package.json client gmtech:~/priceTable-1/pricing-engine/ && ssh gmtech \"cd ~/priceTable-1/pricing-engine && npm install --production && kill $(lsof -t -i:3000) 2>/dev/null; nohup node server.js > /dev/null 2>&1 &\""
+    "deploy": "bash backup-remote.sh && scp -r server.js engine.js engine-largeformat.js package.json client gmtech:~/priceTable-1/pricing-engine/ && ssh gmtech \"cd ~/priceTable-1/pricing-engine && npm install --production && kill $(lsof -t -i:3000) 2>/dev/null; nohup node server.js > /dev/null 2>&1 &\"",
+    "deploy:push-config": "scp config.json config-largeformat.json gmtech:~/priceTable-1/pricing-engine/"
   },
   "dependencies": {
     "compression": "^1.8.1",
