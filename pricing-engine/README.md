@@ -12,7 +12,7 @@ This file is just the "how do I do X again?" cheat sheet.
 | `npm start` | Run the server locally on port 3000 |
 | `npm run backup` | Pull latest `config.json` + `config-largeformat.json` from gmtech server (bash) |
 | `npm run backup:ps` | Same as above, PowerShell version |
-| `npm run deploy` | Push local **code only** to gmtech and restart. Snapshots remote configs to `backups/*.remote.*.bak` first as a safety net. **Does not touch remote configs.** |
+| `npm run deploy` | Push local **code only** to gmtech, restart, and healthcheck. Snapshots remote configs to `backups/*.remote.*.bak` first; rotates the previous remote `nohup.out` into `logs/`; aborts if `/api/health` doesn't respond within 15s (prints the tail of the new log). **Does not touch remote configs.** |
 | `npm run deploy:push-config` | Escape hatch — explicitly `scp` local `config.json` + `config-largeformat.json` to gmtech. Use only when you intentionally want to overwrite live configs (e.g. restoring from a backup). |
 
 After a backup, check what changed:

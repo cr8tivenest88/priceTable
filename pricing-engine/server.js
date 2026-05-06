@@ -30,6 +30,11 @@ app.use(express.static(path.join(__dirname, 'client'), {
 
 // ── Config endpoints ──────────────────────────────────────────────────────────
 
+// GET /api/health — lightweight liveness check used by deploy.sh after restart.
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true })
+})
+
 // GET full config
 app.get('/api/config', (req, res) => {
   res.json(loadConfig())
