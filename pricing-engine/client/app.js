@@ -685,6 +685,40 @@ function selectPricesProduct(key) {
   renderPricesGrid()
 }
 
+// Client mirror of the engine's qty interpolation (clamps outside range).
+function interpQty(map, qty) {
+  if (map && map[qty] != null) return Number(map[qty])
+  const pts = Object.entries(map || {})
+    .map(([q, p]) => [Number(q), Number(p)]).filter(([q, p]) => !isNaN(q) && !isNaN(p))
+    .sort((a, b) => a[0] - b[0])
+  if (!pts.length) return null
+  if (qty <= pts[0][0]) return pts[0][1]
+  if (qty >= pts[pts.length - 1][0]) return pts[pts.length - 1][1]
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [qa, pa] = pts[i], [qb, pb] = pts[i + 1]
+    if (qty >= qa && qty <= qb) return pa + (pb - pa) * ((qty - qa) / (qb - qa))
+  }
+  return pts[pts.length - 1][1]
+}
+
+// Derived price for a non-anchor page row, mirroring engine.js calcLookup.
+// Returns null when this row IS the anchor or the anchor sibling has no price.
+function derivedPagePrice(prod, row, qty) {
+  const ps = prod.pages_slope
+  if (!ps) return null
+  const pages = Number(row.key.pages)
+  if (pages === ps.anchor_pages) return null
+  const anchor = (prod.price_table || []).find(e =>
+    Object.keys(row.key).every(k => k === 'pages'
+      ? Number(e.key.pages) === ps.anchor_pages
+      : e.key[k] === row.key[k]))
+  const base = anchor ? interpQty(anchor.prices, qty) : null
+  if (base == null) return null
+  const sig = (pages - ps.anchor_pages) / ps.step
+  const pct = ps.slope_pct != null ? ps.slope_pct : interpQty(ps.slope_pct_by_qty || {}, qty)
+  return base * (1 + ((pct || 0) / 100) * sig)
+}
+
 function renderPricesGrid() {
   const prod = config.products[pricesProdKey]
   const grid = document.getElementById('pr-grid')
@@ -712,7 +746,15 @@ function renderPricesGrid() {
   if (!qtys.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No quantity break points yet — add some in the Products tab.</p>'; return }
   if (!sizes.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No sizes defined yet — add some in the Products tab.</p>'; return }
 
+  const ps = prod.pages_slope
   let html = ''
+  if (ps) {
+    html += `<div class="note" style="margin-bottom:12px">
+      Only the <strong>${ps.anchor_pages}-page</strong> rows are editable. Other page counts (shown greyed) are
+      <strong>calculated</strong> from the ${ps.anchor_pages}pg price via the page slope —
+      change the percentages in the <strong>Products</strong> tab.
+    </div>`
+  }
   for (const size of sizes) {
     const sizeRows = (prod.price_table || []).filter(r => r.key.size === size)
 
@@ -738,8 +780,14 @@ function renderPricesGrid() {
         const label = opt && typeof opt === 'object' ? opt.label : v
         html += `<td class="row-key">${label}</td>`
       }
+      const derivedRow = ps && Number(row.key.pages) !== ps.anchor_pages
       for (const q of qtys) {
-        html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
+        if (derivedRow) {
+          const d = derivedPagePrice(prod, row, q)
+          html += `<td style="color:var(--muted);background:#f8fafc" title="derived from ${ps.anchor_pages}pg">${d == null ? '—' : d.toFixed(2)}</td>`
+        } else {
+          html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
+        }
       }
       html += `</tr>`
     }
@@ -1279,6 +1327,45 @@ function editorLookup(prod) {
     </div>
   </div>`
 
+  // Page Slope Pricing — only for products that key on `pages` (booklets).
+  // You price the anchor page count by hand; every extra step of pages adds a
+  // percentage of that anchor price, and the percentage can vary by quantity.
+  if (keys.includes('pages')) {
+    const ps = prod.pages_slope || DEFAULT_PAGE_SLOPE
+    const tiers = Object.entries(ps.slope_pct_by_qty || {})
+      .map(([q, p]) => [Number(q), p]).sort((a, b) => a[0] - b[0])
+    html += `<div class="editor-section" id="page-slope-section">
+      <h3>Page Slope Pricing</h3>
+      <div class="note">
+        <strong>You only enter prices for the base page count (${ps.anchor_pages}pg) in the Prices tab.</strong>
+        Every other page count is calculated from it, so you never hand-key 12 / 16 / 20… pages.
+        <ul>
+          <li>Each extra <strong>step</strong> of ${ps.step} pages = one folded sheet (a "signature").</li>
+          <li>Each signature adds <strong>% of the base price</strong>:
+            <code>price = base × (1 + % × signatures)</code>, where <code>signatures = (pages − ${ps.anchor_pages}) ÷ ${ps.step}</code>.</li>
+          <li>The % can differ by <strong>quantity</strong> — big runs scale a little differently. Values between the quantity tiers below are interpolated.</li>
+          <li><em>Example:</em> base 8pg = $270 at qty 100, 41% per step → 12pg = $381, 16pg = $492, 32pg = $936.</li>
+        </ul>
+      </div>
+      <div style="display:flex;gap:20px;margin-bottom:10px;align-items:flex-end">
+        <label>Base page count<br><input id="ps-anchor" type="number" min="1" value="${ps.anchor_pages}" style="width:90px" /></label>
+        <label>Pages per step<br><input id="ps-step" type="number" min="1" value="${ps.step}" style="width:90px" /></label>
+      </div>
+      <table class="price-grid" id="ps-tier-table" style="max-width:360px">
+        <thead><tr><th>At quantity</th><th>% added per step</th><th></th></tr></thead>
+        <tbody>
+          ${tiers.map(([q, p]) => `
+            <tr>
+              <td><input data-ps-qty type="number" min="1" value="${q}" /></td>
+              <td><input data-ps-pct type="number" step="0.1" value="${p}" /></td>
+              <td><button class="btn-mini" onclick="removePageSlopeTier(this)">✕</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn-secondary" style="margin-top:6px" onclick="addPageSlopeTier()">+ Add quantity tier</button>
+    </div>`
+  }
+
   // Sheet imposition table — also the single source of sizes for this product
   if (prod.sheet_imposition) {
     const si = prod.sheet_imposition
@@ -1382,6 +1469,46 @@ function captureSheetImposition(prod) {
   prod.price_table = (prod.price_table || []).filter(r => sizeSet.has(r.key.size))
   // Rebuild to add rows for any new sizes
   rebuildRowsForCombo(prod)
+}
+
+// ── Page slope (booklets) ────────────────────────────────────────────────────
+// Default used when a pages-keyed product has no pages_slope yet. Mirrors the
+// engine's expectations: anchor + step + a per-quantity % map.
+const DEFAULT_PAGE_SLOPE = {
+  anchor_pages: 8,
+  step: 4,
+  slope_pct_by_qty: { 5: 50, 25: 44, 100: 41, 500: 42, 1000: 43, 5000: 48, 10000: 50 },
+}
+
+window.addPageSlopeTier = function () {
+  const tbody = document.querySelector('#ps-tier-table tbody')
+  if (!tbody) return
+  const tr = document.createElement('tr')
+  tr.innerHTML = `
+    <td><input data-ps-qty type="number" min="1" value="" placeholder="qty" /></td>
+    <td><input data-ps-pct type="number" step="0.1" value="" placeholder="%" /></td>
+    <td><button class="btn-mini" onclick="removePageSlopeTier(this)">✕</button></td>`
+  tbody.appendChild(tr)
+}
+window.removePageSlopeTier = function (btn) { btn.closest('tr').remove() }
+
+// Read the Page Slope editor back into prod.pages_slope. Skips silently if the
+// section isn't on screen (e.g. a product without a `pages` key).
+function capturePageSlope(prod) {
+  if (!document.getElementById('page-slope-section')) return
+  const anchor = parseInt(document.getElementById('ps-anchor')?.value)
+  const step   = parseInt(document.getElementById('ps-step')?.value)
+  const byQty = {}
+  document.querySelectorAll('#ps-tier-table tbody tr').forEach(tr => {
+    const q = parseInt(tr.querySelector('[data-ps-qty]')?.value)
+    const p = parseFloat(tr.querySelector('[data-ps-pct]')?.value)
+    if (!isNaN(q) && !isNaN(p)) byQty[q] = p
+  })
+  prod.pages_slope = {
+    anchor_pages: isNaN(anchor) ? 8 : anchor,
+    step:         isNaN(step) || step < 1 ? 4 : step,
+    slope_pct_by_qty: byQty,
+  }
 }
 
 
@@ -1548,6 +1675,7 @@ function saveProduct() {
 
   if (prod.mode === 'ncr')   captureNcrEdits()
   if (prod.sheet_imposition) captureSheetImposition(prod)
+  capturePageSlope(prod)
 
   // Capture allowed finishings (every editor) and allowed add-ons.
   // Empty list = delete the field, which the engine treats as "allow all".
@@ -1593,6 +1721,7 @@ function renderFinishings() {
           <th>Label</th>
           <th>Flat Cost ($)</th>
           <th>Per Unit ($)</th>
+          <th>% of Base</th>
           <th></th>
         </tr>
       </thead>
@@ -1603,6 +1732,7 @@ function renderFinishings() {
       <td><input data-fin-key="${k}" data-field="label"    value="${v.label}" /></td>
       <td><input data-fin-key="${k}" data-field="flat"     type="number" step="0.01"  min="0" value="${v.flat}" /></td>
       <td><input data-fin-key="${k}" data-field="per_unit" type="number" step="0.001" min="0" value="${v.per_unit}" /></td>
+      <td><input data-fin-key="${k}" data-field="pct_of_base" type="number" step="0.1" min="0" value="${v.pct_of_base || 0}" /></td>
       <td><button class="btn-mini" onclick="removeFinishing('${k}')">✕</button></td>
     </tr>`
   }
@@ -1619,9 +1749,10 @@ function captureFinishings() {
     const key = inputs[0].value.trim()
     if (!key) return
     fin[key] = {
-      label:    inputs[1].value.trim(),
-      flat:     parseFloat(inputs[2].value) || 0,
-      per_unit: parseFloat(inputs[3].value) || 0,
+      label:       inputs[1].value.trim(),
+      flat:        parseFloat(inputs[2].value) || 0,
+      per_unit:    parseFloat(inputs[3].value) || 0,
+      pct_of_base: parseFloat(inputs[4].value) || 0,
     }
   })
   if (Object.keys(fin).length) config.globals.finishings = fin
@@ -1631,7 +1762,7 @@ window.addFinishing = function () {
   captureFinishings()
   let n = 1
   while (config.globals.finishings['new' + n]) n++
-  config.globals.finishings['new' + n] = { label: 'New Finishing', flat: 0, per_unit: 0 }
+  config.globals.finishings['new' + n] = { label: 'New Finishing', flat: 0, per_unit: 0, pct_of_base: 0 }
   renderFinishings()
 }
 
