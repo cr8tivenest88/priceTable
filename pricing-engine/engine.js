@@ -197,9 +197,21 @@ function generateAllCombosMulti({ product, markup = 0, sides = null }) {
 // ── Lookup mode ──────────────────────────────────────────────────────────────
 
 function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnaround = 'regular', finishing = 'no_finish', markup = 0 }) {
-  const entry = findLookupEntry(productCfg, specs)
+  // Page-slope products (booklets): only the anchor page count (e.g. 8pg) is
+  // priced by hand. Other page counts are derived by scaling the anchor-page
+  // price — see derivePageSlope below. When deriving, we read the anchor
+  // sibling's price map instead of this combo's (which is usually empty).
+  const slope = productCfg.pages_slope
+  const pages = specs.pages != null ? Number(specs.pages) : null
+  const deriveFromPages = slope && pages != null && pages !== slope.anchor_pages
+
+  const lookupSpecs = deriveFromPages ? { ...specs, pages: slope.anchor_pages } : specs
+  const entry = findLookupEntry(productCfg, lookupSpecs)
   if (!entry) {
-    throw new Error(`No price for ${JSON.stringify(specs)} (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
+    const what = deriveFromPages
+      ? `anchor ${slope.anchor_pages}pg row to derive ${pages}pg`
+      : 'price'
+    throw new Error(`No ${what} for ${JSON.stringify(specs)} (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
   }
 
   // Turnaround-specific pricing: some products (e.g. tshirts) store sameday
@@ -213,14 +225,30 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
     tnMul = 1
   }
 
-  const unit = interpolatePrice(priceMap, qty)
+  let unit = interpolatePrice(priceMap, qty)
+
+  if (deriveFromPages) {
+    if (unit != null) {
+      // Scale the anchor-page unit by (1 + slope% × signatures). The multiplier
+      // is dimensionless, so it works whether `unit` is a line total or per-piece.
+      const signatures = (pages - slope.anchor_pages) / slope.step
+      unit = unit * (1 + (pageSlopePct(slope, qty) / 100) * signatures)
+    } else {
+      // Anchor row has no price at this qty — fall back to a hand-entered price
+      // on the requested combo itself, if one exists (no scaling: it's already
+      // for the right page count).
+      const own = findLookupEntry(productCfg, specs)
+      unit = own ? interpolatePrice(own.prices, qty) : null
+    }
+  }
+
   if (unit == null) {
     throw new Error(`No price points for product (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
   }
 
   const baseCost  = productCfg.price_is_line_total ? unit : unit * qty
   const addonCost = applyAddons(config, productCfg, addons, qty, baseCost)
-  const finCost   = finishingCost(config, finishing, qty)
+  const finCost   = finishingCost(config, finishing, qty, baseCost)
   const subtotal  = baseCost + addonCost + finCost
   const totalCost = subtotal * tnMul
   const sellPrice = totalCost * (1 + markup / 100)
@@ -239,6 +267,19 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
     sellPrice:     round(sellPrice),
     unitSellPrice: round(sellPrice / qty),
   }
+}
+
+/**
+ * Page-slope percentage for a given quantity. Supports either a single global
+ * `slope_pct` or a per-quantity `slope_pct_by_qty` map (interpolated/clamped
+ * across quantity break points exactly like prices are). Returns 0 if neither
+ * is configured, so a misconfigured slope degrades to "no uplift" rather than
+ * NaN pricing.
+ */
+function pageSlopePct(slope, qty) {
+  if (typeof slope.slope_pct === 'number') return slope.slope_pct
+  const v = interpolatePrice(slope.slope_pct_by_qty || {}, qty)
+  return v == null ? 0 : v
 }
 
 /**
@@ -312,12 +353,22 @@ function enumerateLookup(config, productCfg, { product, markup, turnaround, side
     return true
   }
 
+  // For page-slope products (booklets), derived page rows have empty price maps
+  // of their own — their availability follows the anchor sibling's price map.
+  const slope = productCfg.pages_slope
   for (const entry of productCfg.price_table) {
     if (!filterRow(entry)) continue
+    const derives = slope && entry.key.pages != null && Number(entry.key.pages) !== slope.anchor_pages
+    let availMap = entry.prices
+    if (derives) {
+      const anchor = findLookupEntry(productCfg, { ...entry.key, pages: slope.anchor_pages })
+      // Fall back to the row's own map if no anchor (lets hand-entered rows show).
+      availMap = (anchor && Object.keys(anchor.prices || {}).length) ? anchor.prices : entry.prices
+    }
     const comboLabel = productCfg.lookup_keys.map(k => `${k}: ${entry.key[k]}`).join(' · ')
     for (const finishing of finishings) {
       for (const qty of productCfg.quantities) {
-        if (entry.prices[qty] == null) continue
+        if (availMap[qty] == null) continue
         const price = calculatePrice({ product, specs: entry.key, finishing, qty, markup, turnaround, sides, _config: cfgRef })
         rows.push({ comboLabel, specs: entry.key, finishing, ...price })
       }
@@ -345,7 +396,7 @@ function calcNcr(config, productCfg, { specs = {}, qty, addons = [], turnaround 
 
   const baseCost  = setup + marginal * qty
   const addonCost = applyAddons(config, productCfg, addons, qty, baseCost)
-  const finCost   = finishingCost(config, finishing, qty)
+  const finCost   = finishingCost(config, finishing, qty, baseCost)
   const subtotal  = baseCost + addonCost + finCost
   const totalCost = subtotal * turnaroundMultiplier(config, turnaround)
   const sellPrice = totalCost * (1 + markup / 100)
@@ -427,10 +478,15 @@ function turnaroundMultiplier(config, key) {
   return t ? t.multiplier : 1
 }
 
-function finishingCost(config, key, qty) {
+// finishing = flat + per_unit × qty + pct_of_base % of the base price.
+// pct_of_base is optional (older configs omit it) and, like the add-on of the
+// same name, is taken on the raw base cost — before add-ons and before the
+// turnaround multiplier, which still scales the whole subtotal afterwards.
+function finishingCost(config, key, qty, baseCost = 0) {
   const f = config.globals?.finishings?.[key]
   if (!f) return 0
-  return f.flat + f.per_unit * qty
+  const pct = f.pct_of_base ? baseCost * (f.pct_of_base / 100) : 0
+  return (f.flat || 0) + (f.per_unit || 0) * qty + pct
 }
 
 // ── Utilities ────────────────────────────────────────────────────────────────

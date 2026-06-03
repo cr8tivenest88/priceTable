@@ -13,7 +13,7 @@ const BACKUP_DIR  = path.join(__dirname, 'backups')
 if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR)
 
 const app  = express()
-const PORT = 3000
+const PORT = process.env.PORT || 3000
 
 app.use(compression())
 app.use(express.json({ limit: '10mb' }))

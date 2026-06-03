@@ -2689,6 +2689,19 @@
     "booklets": {
       "label": "Booklets",
       "mode": "lookup",
+      "pages_slope": {
+        "anchor_pages": 8,
+        "step": 4,
+        "slope_pct_by_qty": {
+          "5": 50,
+          "25": 44,
+          "100": 41,
+          "500": 42,
+          "1000": 43,
+          "5000": 48,
+          "10000": 50
+        }
+      },
       "lookup_keys": [
         "size",
         "paper_stock",
