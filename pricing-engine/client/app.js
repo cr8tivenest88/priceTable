@@ -1292,26 +1292,29 @@ function editorLookup(prod) {
     const currentKeys = new Set(opts.map(keyOf))
     const missing = defaults.filter(d => !currentKeys.has(typeof d === 'object' ? d.key : d))
 
-    // Price-multiplier dimension (e.g. cover): the ×1 value is the anchor that is
-    // hand-priced; the others are anchor price × their (editable) multiplier.
+    // Price-multiplier dimension. Two modes (option_multiplier_mode):
+    //  - anchor (e.g. cover): only the ×1 value is priced; others = anchor × mult.
+    //  - own (e.g. paper_stock): each value keeps its own price; mult scales it.
     if (isMulDim) {
+      const mulMode = (prod.option_multiplier_mode || {})[k] || 'anchor'
+      const note = mulMode === 'own'
+        ? `Each value keeps its <strong>own price</strong> from the Prices tab. The multiplier scales it — <code>×1 = unchanged</code>. Raise it to add a surcharge for that option.`
+        : `Only the <strong>×1 (anchor)</strong> value is priced in the Prices tab. The others are <code>anchor price × multiplier</code>. Edit a multiplier to change how much that option adds.`
       html += `<div class="editor-section">
-        <h3>${humanize(k)} <span style="font-size:12px;color:var(--muted);font-weight:normal">— price multiplier</span></h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
-          Only the <strong>×1 (anchor)</strong> value is priced in the Prices tab. The others are
-          <code>anchor price × multiplier</code>. Edit a multiplier to change how much that option adds.
-        </p>
+        <h3>${humanize(k)} <span style="font-size:12px;color:var(--muted);font-weight:normal">— price multiplier${mulMode === 'own' ? ' (own price)' : ''}</span></h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:6px">${note}</p>
         <table class="price-grid" style="max-width:420px">
           <thead><tr><th>${humanize(k)}</th><th>Multiplier (×)</th><th></th></tr></thead>
           <tbody>
             ${opts.map(v => {
               const kv = keyOf(v)
               const m = (typeof v === 'object' && v.multiplier != null) ? v.multiplier : 1
+              const anchorTag = mulMode === 'anchor' && Number(m) === 1 ? ' <span style="color:var(--muted);font-size:11px">anchor</span>' : ''
               return `<tr>
                 <td><input type="text" value="${escapeAttr(labelOf(v))}" style="width:130px"
                      onchange="renameOptionInline('${k}','${escapeAttr(kv)}',this.value)" /></td>
                 <td><input type="number" step="0.01" min="0" value="${m}" style="width:90px"
-                     onchange="setOptionMultiplier('${k}','${escapeAttr(kv)}',this.value)" />${Number(m) === 1 ? ' <span style="color:var(--muted);font-size:11px">anchor</span>' : ''}</td>
+                     onchange="setOptionMultiplier('${k}','${escapeAttr(kv)}',this.value)" />${anchorTag}</td>
                 <td><button class="btn-mini" onclick="removeLookupValue('${k}','${escapeAttr(kv)}')" title="Remove">✕</button></td>
               </tr>`
             }).join('')}

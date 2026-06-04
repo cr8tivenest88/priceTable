@@ -205,14 +205,15 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
   const pages = specs.pages != null ? Number(specs.pages) : null
   const deriveFromPages = slope && pages != null && pages !== slope.anchor_pages
 
-  // Inline option multipliers (e.g. cover): dimensions whose options carry a
-  // `multiplier` are priced from the anchor value (×1) × the selected value's
-  // multiplier, so only the anchor row is hand-priced. Composes with page-slope.
+  // Inline option multipliers: cover (anchor mode) derives from its anchor value
+  // and is swapped for the lookup; paper_stock (own mode) keeps its own row and
+  // is only scaled. `optFactor` carries both; `optSwaps` only the anchor-mode
+  // swaps. Composes with page-slope.
   const { swaps: optSwaps, factor: optFactor } = optionMultipliers(productCfg, specs)
-  const deriveFromOpts = Object.keys(optSwaps).length > 0
+  const hasOptSwaps = Object.keys(optSwaps).length > 0
 
   let lookupSpecs = specs
-  if (deriveFromPages || deriveFromOpts) {
+  if (deriveFromPages || hasOptSwaps) {
     lookupSpecs = { ...specs }
     if (deriveFromPages) lookupSpecs.pages = slope.anchor_pages
     Object.assign(lookupSpecs, optSwaps)
@@ -222,7 +223,7 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
   if (!entry) {
     const reasons = []
     if (deriveFromPages) reasons.push(`${slope.anchor_pages}pg`)
-    if (deriveFromOpts) reasons.push(Object.entries(optSwaps).map(([k, v]) => `${k}=${v}`).join(', '))
+    if (hasOptSwaps) reasons.push(Object.entries(optSwaps).map(([k, v]) => `${k}=${v}`).join(', '))
     const what = reasons.length
       ? `anchor ${reasons.join(' + ')} row to derive ${JSON.stringify(specs)}`
       : 'price'
@@ -252,13 +253,14 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
       // Anchor-page row empty at this qty — fall back to a hand-entered price on
       // the requested page count (still at any anchored option dims). No page
       // scaling: it's already the right page count.
-      const own = findLookupEntry(productCfg, deriveFromOpts ? { ...specs, ...optSwaps } : specs)
+      const own = findLookupEntry(productCfg, hasOptSwaps ? { ...specs, ...optSwaps } : specs)
       unit = own ? interpolatePrice(own.prices, qty) : null
     }
   }
 
-  // Apply inline option multipliers (cover, etc.) last — dimensionless factor.
-  if (deriveFromOpts && unit != null) unit = unit * optFactor
+  // Apply the option multiplier factor last (cover anchor-derive + stock
+  // own-scale); ×1 in own mode is a no-op so the stock keeps its own price.
+  if (optFactor !== 1 && unit != null) unit = unit * optFactor
 
   if (unit == null) {
     throw new Error(`No price points for product (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
@@ -302,30 +304,43 @@ function pageSlopePct(slope, qty) {
 
 /**
  * Inline per-option multipliers. Any lookup dimension whose options are objects
- * carrying a numeric `multiplier` (e.g. cover) is priced from its anchor value
- * — the option with multiplier 1, else the first — times the selected value's
- * multiplier, so only the anchor row needs hand-entered prices. Returns the
- * anchor `swaps` to apply for the table lookup and the combined `factor` to
- * scale the looked-up price. Composes with pages_slope.
+ * carrying a numeric `multiplier` is priced by one of two modes, set per
+ * dimension via productCfg.option_multiplier_mode[key] (default "anchor"):
+ *
+ *   "anchor" (e.g. cover): non-anchor values derive from the anchor value
+ *      (multiplier 1) × the value's multiplier — only the anchor row is priced.
+ *      The dimension is swapped to its anchor value for the table lookup.
+ *
+ *   "own" (e.g. paper_stock): the value keeps its OWN price row, scaled by its
+ *      multiplier — so ×1 leaves the price untouched and the multiplier is just
+ *      an adjustment knob. No swap.
+ *
+ * Returns the anchor `swaps` to apply for the table lookup and the combined
+ * `factor` to scale the looked-up price. Composes with pages_slope.
  */
 function optionMultipliers(productCfg, specs) {
+  const modes = productCfg.option_multiplier_mode || {}
   const swaps = {}
   let factor = 1
   for (const key of productCfg.lookup_keys || []) {
     const opts = productCfg.options?.[key]
     if (!Array.isArray(opts) || !opts.some(o => o && typeof o === 'object' && o.multiplier != null)) continue
-    const anchorOpt = opts.find(o => o && typeof o === 'object' && Number(o.multiplier) === 1) || opts[0]
-    const anchorVal = typeof anchorOpt === 'object' ? anchorOpt.key : anchorOpt
     const reqVal = specs[key]
-    if (reqVal == null || reqVal === anchorVal) continue
+    if (reqVal == null) continue
     const opt = opts.find(o => (typeof o === 'object' ? o.key : o) === reqVal)
-    // A value carrying a multiplier always derives from the anchor (even ×1, so
-    // empty/unpriced stocks still resolve to the anchor price). A plain value
-    // mixed into a multiplier dimension keeps using its own price row.
     if (!opt || typeof opt !== 'object' || opt.multiplier == null) continue
     const m = Number(opt.multiplier) > 0 ? Number(opt.multiplier) : 1
-    swaps[key] = anchorVal
-    factor *= m
+    if ((modes[key] || 'anchor') === 'own') {
+      // Scale the value's own row; ×1 is a no-op. No swap.
+      factor *= m
+    } else {
+      // Derive from the anchor value (multiplier 1, else first).
+      const anchorOpt = opts.find(o => o && typeof o === 'object' && Number(o.multiplier) === 1) || opts[0]
+      const anchorVal = typeof anchorOpt === 'object' ? anchorOpt.key : anchorOpt
+      if (reqVal === anchorVal) continue
+      swaps[key] = anchorVal
+      factor *= m
+    }
   }
   return { swaps, factor }
 }
