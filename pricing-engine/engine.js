@@ -205,11 +205,26 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
   const pages = specs.pages != null ? Number(specs.pages) : null
   const deriveFromPages = slope && pages != null && pages !== slope.anchor_pages
 
-  const lookupSpecs = deriveFromPages ? { ...specs, pages: slope.anchor_pages } : specs
+  // Inline option multipliers (e.g. cover): dimensions whose options carry a
+  // `multiplier` are priced from the anchor value (×1) × the selected value's
+  // multiplier, so only the anchor row is hand-priced. Composes with page-slope.
+  const { swaps: optSwaps, factor: optFactor } = optionMultipliers(productCfg, specs)
+  const deriveFromOpts = Object.keys(optSwaps).length > 0
+
+  let lookupSpecs = specs
+  if (deriveFromPages || deriveFromOpts) {
+    lookupSpecs = { ...specs }
+    if (deriveFromPages) lookupSpecs.pages = slope.anchor_pages
+    Object.assign(lookupSpecs, optSwaps)
+  }
+
   const entry = findLookupEntry(productCfg, lookupSpecs)
   if (!entry) {
-    const what = deriveFromPages
-      ? `anchor ${slope.anchor_pages}pg row to derive ${pages}pg`
+    const reasons = []
+    if (deriveFromPages) reasons.push(`${slope.anchor_pages}pg`)
+    if (deriveFromOpts) reasons.push(Object.entries(optSwaps).map(([k, v]) => `${k}=${v}`).join(', '))
+    const what = reasons.length
+      ? `anchor ${reasons.join(' + ')} row to derive ${JSON.stringify(specs)}`
       : 'price'
     throw new Error(`No ${what} for ${JSON.stringify(specs)} (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
   }
@@ -234,13 +249,16 @@ function calcLookup(config, productCfg, { specs = {}, qty, addons = [], turnarou
       const signatures = (pages - slope.anchor_pages) / slope.step
       unit = unit * (1 + (pageSlopePct(slope, qty) / 100) * signatures)
     } else {
-      // Anchor row has no price at this qty — fall back to a hand-entered price
-      // on the requested combo itself, if one exists (no scaling: it's already
-      // for the right page count).
-      const own = findLookupEntry(productCfg, specs)
+      // Anchor-page row empty at this qty — fall back to a hand-entered price on
+      // the requested page count (still at any anchored option dims). No page
+      // scaling: it's already the right page count.
+      const own = findLookupEntry(productCfg, deriveFromOpts ? { ...specs, ...optSwaps } : specs)
       unit = own ? interpolatePrice(own.prices, qty) : null
     }
   }
+
+  // Apply inline option multipliers (cover, etc.) last — dimensionless factor.
+  if (deriveFromOpts && unit != null) unit = unit * optFactor
 
   if (unit == null) {
     throw new Error(`No price points for product (lookup keys: ${productCfg.lookup_keys.join(', ')})`)
@@ -280,6 +298,33 @@ function pageSlopePct(slope, qty) {
   if (typeof slope.slope_pct === 'number') return slope.slope_pct
   const v = interpolatePrice(slope.slope_pct_by_qty || {}, qty)
   return v == null ? 0 : v
+}
+
+/**
+ * Inline per-option multipliers. Any lookup dimension whose options are objects
+ * carrying a numeric `multiplier` (e.g. cover) is priced from its anchor value
+ * — the option with multiplier 1, else the first — times the selected value's
+ * multiplier, so only the anchor row needs hand-entered prices. Returns the
+ * anchor `swaps` to apply for the table lookup and the combined `factor` to
+ * scale the looked-up price. Composes with pages_slope.
+ */
+function optionMultipliers(productCfg, specs) {
+  const swaps = {}
+  let factor = 1
+  for (const key of productCfg.lookup_keys || []) {
+    const opts = productCfg.options?.[key]
+    if (!Array.isArray(opts) || !opts.some(o => o && typeof o === 'object' && o.multiplier != null)) continue
+    const anchorOpt = opts.find(o => o && typeof o === 'object' && Number(o.multiplier) === 1) || opts[0]
+    const anchorVal = typeof anchorOpt === 'object' ? anchorOpt.key : anchorOpt
+    const reqVal = specs[key]
+    if (reqVal == null || reqVal === anchorVal) continue
+    const opt = opts.find(o => (typeof o === 'object' ? o.key : o) === reqVal)
+    const m = (opt && typeof opt === 'object' && Number(opt.multiplier) > 0) ? Number(opt.multiplier) : 1
+    if (m === 1) continue
+    swaps[key] = anchorVal
+    factor *= m
+  }
+  return { swaps, factor }
 }
 
 /**
@@ -356,13 +401,27 @@ function enumerateLookup(config, productCfg, { product, markup, turnaround, side
   // For page-slope products (booklets), derived page rows have empty price maps
   // of their own — their availability follows the anchor sibling's price map.
   const slope = productCfg.pages_slope
+  // Skip stale rows whose key values are no longer in `options` (e.g. a cover
+  // removed from the list) so they don't ghost into the generated table.
+  const optSets = {}
+  for (const k of keys) {
+    const o = productCfg.options?.[k]
+    if (Array.isArray(o)) optSets[k] = new Set(o.map(x => String(typeof x === 'object' ? x.key : x)))
+  }
+  const inOptions = e => keys.every(k => !optSets[k] || optSets[k].has(String(e.key[k])))
+
   for (const entry of productCfg.price_table) {
     if (!filterRow(entry)) continue
-    const derives = slope && entry.key.pages != null && Number(entry.key.pages) !== slope.anchor_pages
+    if (!inOptions(entry)) continue
+    // Availability follows the anchor sibling for derived rows (page-slope and/or
+    // option multipliers), whose own price maps are usually empty.
+    const pageDerives = slope && entry.key.pages != null && Number(entry.key.pages) !== slope.anchor_pages
+    const { swaps } = optionMultipliers(productCfg, entry.key)
     let availMap = entry.prices
-    if (derives) {
-      const anchor = findLookupEntry(productCfg, { ...entry.key, pages: slope.anchor_pages })
-      // Fall back to the row's own map if no anchor (lets hand-entered rows show).
+    if (pageDerives || Object.keys(swaps).length) {
+      const anchorKey = { ...entry.key, ...swaps }
+      if (pageDerives) anchorKey.pages = slope.anchor_pages
+      const anchor = findLookupEntry(productCfg, anchorKey)
       availMap = (anchor && Object.keys(anchor.prices || {}).length) ? anchor.prices : entry.prices
     }
     const comboLabel = productCfg.lookup_keys.map(k => `${k}: ${entry.key[k]}`).join(' · ')

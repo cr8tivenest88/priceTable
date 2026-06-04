@@ -1283,13 +1283,47 @@ function editorLookup(prod) {
   // Each non-size key gets its own chip list — adding a value auto-creates rows
   for (const k of otherKeys) {
     const opts = prod.options[k] || []
-    const labelOf = v => typeof v === 'object' ? v.label : v
+    const labelOf = v => typeof v === 'object' ? (v.label ?? v.key) : v
     const keyOf   = v => typeof v === 'object' ? v.key   : v
+    const isMulDim = opts.some(o => o && typeof o === 'object' && 'multiplier' in o)
 
     // Missing default values the user may have accidentally deleted
     const defaults = DEFAULT_OPTIONS[currentProdKey]?.[k] || []
     const currentKeys = new Set(opts.map(keyOf))
     const missing = defaults.filter(d => !currentKeys.has(typeof d === 'object' ? d.key : d))
+
+    // Price-multiplier dimension (e.g. cover): the ×1 value is the anchor that is
+    // hand-priced; the others are anchor price × their (editable) multiplier.
+    if (isMulDim) {
+      html += `<div class="editor-section">
+        <h3>${humanize(k)} <span style="font-size:12px;color:var(--muted);font-weight:normal">— price multiplier</span></h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+          Only the <strong>×1 (anchor)</strong> value is priced in the Prices tab. The others are
+          <code>anchor price × multiplier</code>. Edit a multiplier to change how much that option adds.
+        </p>
+        <table class="price-grid" style="max-width:420px">
+          <thead><tr><th>${humanize(k)}</th><th>Multiplier (×)</th><th></th></tr></thead>
+          <tbody>
+            ${opts.map(v => {
+              const kv = keyOf(v)
+              const m = (typeof v === 'object' && v.multiplier != null) ? v.multiplier : 1
+              return `<tr>
+                <td><input type="text" value="${escapeAttr(labelOf(v))}" style="width:130px"
+                     onchange="renameOptionInline('${k}','${escapeAttr(kv)}',this.value)" /></td>
+                <td><input type="number" step="0.01" min="0" value="${m}" style="width:90px"
+                     onchange="setOptionMultiplier('${k}','${escapeAttr(kv)}',this.value)" />${Number(m) === 1 ? ' <span style="color:var(--muted);font-size:11px">anchor</span>' : ''}</td>
+                <td><button class="btn-mini" onclick="removeLookupValue('${k}','${escapeAttr(kv)}')" title="Remove">✕</button></td>
+              </tr>`
+            }).join('')}
+          </tbody>
+        </table>
+        <div class="chip-add" style="margin-top:8px">
+          <input id="add-${k}" placeholder="add new ${humanize(k).toLowerCase()}" />
+          <button onclick="addLookupValue('${k}')">+ Add</button>
+        </div>
+      </div>`
+      continue
+    }
 
     html += `<div class="editor-section">
       <h3>${humanize(k)}</h3>
@@ -1534,6 +1568,44 @@ window.addLookupValue = function (keyName) {
   refreshEditor()
 }
 
+// Inline rename of a lookup option from its name field (e.g. cover). Renames the
+// key + label and rewrites every price_table row that keyed by the old value, so
+// the name stays consistent everywhere. Re-renders so the row's other controls
+// pick up the new key.
+window.renameOptionInline = function (keyName, currentKey, raw) {
+  const prod = config.products[currentProdKey]
+  const opts = prod.options[keyName] || []
+  const idx = opts.findIndex(o => (typeof o === 'object' ? o.key : o) === currentKey)
+  if (idx === -1) return
+  const trimmed = String(raw).trim()
+  if (!trimmed || trimmed === currentKey) { refreshEditor(); return }
+  const norm = s => String(s).trim().toLowerCase()
+  if (opts.some((v, i) => i !== idx && norm(typeof v === 'object' ? v.key : v) === norm(trimmed))) {
+    toast(`"${trimmed}" already exists`, 'err'); refreshEditor(); return
+  }
+  let updated = 0
+  for (const row of (prod.price_table || [])) {
+    if (String(row.key?.[keyName]) === String(currentKey)) { row.key[keyName] = trimmed; updated++ }
+  }
+  if (typeof opts[idx] === 'object') { opts[idx].key = trimmed; opts[idx].label = trimmed }
+  else opts[idx] = trimmed
+  toast(`Renamed — updated ${updated} price row${updated === 1 ? '' : 's'}`)
+  refreshEditor()
+}
+
+// Set/promote a lookup option's price multiplier (e.g. cover). Promotes a plain
+// string option into a { key, label, multiplier } object so it can carry one.
+window.setOptionMultiplier = function (keyName, valueKey, raw) {
+  const prod = config.products[currentProdKey]
+  const opts = prod.options[keyName] || []
+  const idx = opts.findIndex(o => (typeof o === 'object' ? o.key : o) === valueKey)
+  if (idx === -1) return
+  let m = parseFloat(raw)
+  if (isNaN(m) || m <= 0) m = 1
+  if (typeof opts[idx] === 'object') opts[idx].multiplier = m
+  else opts[idx] = { key: opts[idx], label: opts[idx], multiplier: m }
+}
+
 // Restore a single missing default option (key + label)
 window.restoreDefaultOption = function (keyName, valueKey) {
   const prod = config.products[currentProdKey]
@@ -1576,30 +1648,41 @@ window.renameLookupValue = function (keyName, currentKey) {
   if (idx === -1) { toast(`Couldn't find "${currentKey}"`, 'err'); return }
 
   const isObject = typeof opts[idx] === 'object'
-  const currentLabel = isObject ? opts[idx].label : opts[idx]
-  const next = prompt(isObject ? 'New label:' : 'New name:', currentLabel)
+  const isMulOpt = isObject && 'multiplier' in opts[idx]
+  const currentLabel = isObject ? (opts[idx].label ?? opts[idx].key) : opts[idx]
+  const next = prompt(isObject && !isMulOpt ? 'New label:' : 'New name:', currentLabel)
   if (next == null) return
   const trimmed = next.trim()
   if (!trimmed || trimmed === currentLabel) return
 
-  if (isObject) {
+  const norm = s => String(s).trim().toLowerCase()
+  const renameRows = () => {
+    let updated = 0
+    for (const row of (prod.price_table || [])) {
+      if (String(row.key?.[keyName]) === String(currentKey)) { row.key[keyName] = trimmed; updated++ }
+    }
+    toast(`Renamed — updated ${updated} price row${updated === 1 ? '' : 's'}`)
+  }
+
+  if (isMulOpt) {
+    // Multiplier-dimension option (e.g. cover): the key IS the name and appears
+    // in price_table, so rename the key + label and rewrite the matching rows.
+    if (opts.some((v, i) => i !== idx && norm(typeof v === 'object' ? v.key : v) === norm(trimmed))) {
+      toast(`"${trimmed}" already exists`, 'err'); return
+    }
+    renameRows()
+    opts[idx].key = trimmed
+    opts[idx].label = trimmed
+  } else if (isObject) {
     // Just a display rename — key (and therefore price_table rows) untouched
     opts[idx].label = trimmed
   } else {
     // String rename — must also update every price_table row that keyed by it
-    const norm = s => String(s).trim().toLowerCase()
     if (opts.some((v, i) => i !== idx && norm(typeof v === 'object' ? v.key : v) === norm(trimmed))) {
       toast(`"${trimmed}" already exists`, 'err'); return
     }
     opts[idx] = trimmed
-    let updated = 0
-    for (const row of (prod.price_table || [])) {
-      if (String(row.key?.[keyName]) === String(currentKey)) {
-        row.key[keyName] = trimmed
-        updated++
-      }
-    }
-    toast(`Renamed — updated ${updated} price row${updated === 1 ? '' : 's'}`)
+    renameRows()
   }
   refreshEditor()
 }
