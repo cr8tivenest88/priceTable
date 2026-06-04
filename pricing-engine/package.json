@@ -8,7 +8,7 @@
     "dev": "set PORT=4000&& node server.js",
     "backup": "bash pull-configs.sh",
     "backup:ps": "powershell -ExecutionPolicy Bypass -File pull-configs.ps1",
-    "deploy": "\"C:\\Program Files\\Git\\bin\\bash.exe\" deploy.sh",
+    "deploy": "C:\\PROGRA~1\\Git\\bin\\bash.exe deploy.sh",
     "deploy:push-config": "scp config.json config-largeformat.json gmtech:~/priceTable-1/pricing-engine/"
   },
   "dependencies": {
