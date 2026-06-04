@@ -319,8 +319,11 @@ function optionMultipliers(productCfg, specs) {
     const reqVal = specs[key]
     if (reqVal == null || reqVal === anchorVal) continue
     const opt = opts.find(o => (typeof o === 'object' ? o.key : o) === reqVal)
-    const m = (opt && typeof opt === 'object' && Number(opt.multiplier) > 0) ? Number(opt.multiplier) : 1
-    if (m === 1) continue
+    // A value carrying a multiplier always derives from the anchor (even ×1, so
+    // empty/unpriced stocks still resolve to the anchor price). A plain value
+    // mixed into a multiplier dimension keeps using its own price row.
+    if (!opt || typeof opt !== 'object' || opt.multiplier == null) continue
+    const m = Number(opt.multiplier) > 0 ? Number(opt.multiplier) : 1
     swaps[key] = anchorVal
     factor *= m
   }

@@ -129,10 +129,26 @@
           "11\" x 17\" (Ledger)"
         ],
         "paper_stock": [
-          "80lb Glossy Text",
-          "100lb Glossy Text",
-          "14 PT",
-          "16 PT"
+          {
+            "key": "80lb Glossy Text",
+            "label": "80lb Glossy Text",
+            "multiplier": 1
+          },
+          {
+            "key": "100lb Glossy Text",
+            "label": "100lb Glossy Text",
+            "multiplier": 1.17
+          },
+          {
+            "key": "14 PT",
+            "label": "14 PT",
+            "multiplier": 1.33
+          },
+          {
+            "key": "16 PT",
+            "label": "16 PT",
+            "multiplier": 1.5
+          }
         ],
         "folding": [
           "Half Fold",
@@ -872,10 +888,26 @@
           "13\" x 19\""
         ],
         "paper_stock": [
-          "80lb Gloss Text",
-          "100lb Gloss Text",
-          "80lb Mate Finish",
-          "100lb Mate Finish"
+          {
+            "key": "80lb Gloss Text",
+            "label": "80lb Gloss Text",
+            "multiplier": 1
+          },
+          {
+            "key": "100lb Gloss Text",
+            "label": "100lb Gloss Text",
+            "multiplier": 1.13
+          },
+          {
+            "key": "80lb Mate Finish",
+            "label": "80lb Mate Finish",
+            "multiplier": 1.25
+          },
+          {
+            "key": "100lb Mate Finish",
+            "label": "100lb Mate Finish",
+            "multiplier": 1.38
+          }
         ],
         "sides": [
           {
@@ -2148,12 +2180,36 @@
           "2.5x2.5"
         ],
         "paper_stock": [
-          "14 PT Standard",
-          "15 PT Uncoated",
-          "16 PT",
-          "18 PT",
-          "24 PT",
-          "26 PT"
+          {
+            "key": "14 PT Standard",
+            "label": "14 PT Standard",
+            "multiplier": 1
+          },
+          {
+            "key": "15 PT Uncoated",
+            "label": "15 PT Uncoated",
+            "multiplier": 0.99
+          },
+          {
+            "key": "16 PT",
+            "label": "16 PT",
+            "multiplier": 1
+          },
+          {
+            "key": "18 PT",
+            "label": "18 PT",
+            "multiplier": 1
+          },
+          {
+            "key": "24 PT",
+            "label": "24 PT",
+            "multiplier": 1
+          },
+          {
+            "key": "26 PT",
+            "label": "26 PT",
+            "multiplier": 1
+          }
         ],
         "variant": [
           {
@@ -2715,12 +2771,36 @@
           "8.5\"x5.5\""
         ],
         "paper_stock": [
-          "80lb Gloss",
-          "100lb Gloss",
-          "80lb Matte",
-          "100lb Matte",
-          "80lb Silk",
-          "100lb Silk"
+          {
+            "key": "80lb Gloss",
+            "label": "80lb Gloss",
+            "multiplier": 1
+          },
+          {
+            "key": "100lb Gloss",
+            "label": "100lb Gloss",
+            "multiplier": 1.13
+          },
+          {
+            "key": "80lb Matte",
+            "label": "80lb Matte",
+            "multiplier": 1
+          },
+          {
+            "key": "100lb Matte",
+            "label": "100lb Matte",
+            "multiplier": 1
+          },
+          {
+            "key": "80lb Silk",
+            "label": "80lb Silk",
+            "multiplier": 1
+          },
+          {
+            "key": "100lb Silk",
+            "label": "100lb Silk",
+            "multiplier": 1
+          }
         ],
         "pages": [
           8,
@@ -15253,7 +15333,11 @@
           "8.5x3"
         ],
         "paper_stock": [
-          "14pt Semi Gloss & 100lb Gloss Text"
+          {
+            "key": "14pt Semi Gloss & 100lb Gloss Text",
+            "label": "14pt Semi Gloss & 100lb Gloss Text",
+            "multiplier": 1
+          }
         ],
         "sides": [
           {
@@ -19512,19 +19596,23 @@
         "paper_stock": [
           {
             "key": "100lb_gloss_text",
-            "label": "100lb Gloss Text"
+            "label": "100lb Gloss Text",
+            "multiplier": 1
           },
           {
             "key": "matte_finish_100lb",
-            "label": "Matte Finish 100lb"
+            "label": "Matte Finish 100lb",
+            "multiplier": 1.05
           },
           {
             "key": "80lb_enviro",
-            "label": "80lb Enviro"
+            "label": "80lb Enviro",
+            "multiplier": 5.23
           },
           {
             "key": "100lb_uv",
-            "label": "100lb + UV"
+            "label": "100lb + UV",
+            "multiplier": 5.85
           }
         ],
         "size": [
