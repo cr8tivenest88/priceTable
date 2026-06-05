@@ -854,6 +854,10 @@
           }
         }
       ],
+      "allowed_addons": [
+        "double_sided",
+        "Cut_out"
+      ],
       "allowed_finishings": [
         "no_finish",
         "glossy_lam",
@@ -11750,6 +11754,9 @@
         }
       ],
       "price_is_line_total": true,
+      "allowed_addons": [
+        "Cut_out"
+      ],
       "allowed_finishings": [
         "no_finish"
       ],
@@ -20213,7 +20220,12 @@
           }
         }
       ],
-      "allowed_addons": [],
+      "allowed_addons": [
+        "Cut_out",
+        "Easel_10",
+        "Easel_20",
+        "Easel_71"
+      ],
       "allowed_finishings": [
         "no_finish"
       ],

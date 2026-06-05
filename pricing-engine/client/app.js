@@ -295,6 +295,16 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
     return renderEmptyStructure(prod, otherKeys, size, markup, sides, turnarounds)
   }
 
+  // Products with allowed add-ons get extra price columns (one per add-on,
+  // grouped under each turnaround) so the generated table shows add-on pricing.
+  // `double_sided` is excluded — it's driven by the Sides dropdown and already
+  // baked into the base price, so a column would double-count it.
+  const addonCols = (prod.allowed_addons || [])
+    .filter(k => k !== 'double_sided' && config.globals.addons[k])
+  if (addonCols.length) {
+    return renderLookupAddonTable(prod, rows, size, markup, sides, turnarounds, otherKeys, addonCols)
+  }
+
   // Sort: combo → qty → finishing
   rows.sort((a, b) => {
     const ak = otherKeys.map(k => formatKeyValue(prod, k, a.specs[k])).join(' · ')
@@ -330,6 +340,78 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
         return p
           ? `<td><span class="sell">$${p.sellPrice}</span><br><span class="unit">$${p.unitSellPrice}/u</span></td>`
           : `<td>—</td>`
+      }).join('')}
+    </tr>`
+  }
+
+  html += `</tbody></table></div></div>`
+  return html
+}
+
+// Lookup price table WITH add-on columns. Same row dimensions as the plain
+// table (size · otherKeys · qty · finishing), but each turnaround header spans
+// a "Base" column plus one column per allowed add-on, showing the price with
+// that single add-on applied. Mirrors how the NCR table surfaces add-ons.
+function renderLookupAddonTable(prod, rows, size, markup, sides, turnarounds, otherKeys, addonCols) {
+  rows.sort((a, b) => {
+    const ak = otherKeys.map(k => formatKeyValue(prod, k, a.specs[k])).join(' · ')
+    const bk = otherKeys.map(k => formatKeyValue(prod, k, b.specs[k])).join(' · ')
+    return ak.localeCompare(bk) || a.qty - b.qty || String(a.finishing).localeCompare(String(b.finishing))
+  })
+
+  const markupMul = 1 + markup / 100
+  const addonDefs = addonCols.map(k => ({ key: k, def: config.globals.addons[k] }))
+
+  // Add-on cost added to the raw base subtotal, BEFORE turnaround × markup —
+  // matching engine.js applyAddons (flat / flat_per_pc / pct_of_base).
+  const addonDelta = (def, qty, baseCost) => {
+    if (def.type === 'flat')        return def.amount
+    if (def.type === 'flat_per_pc') return def.amount * qty
+    if (def.type === 'pct_of_base') return (baseCost || 0) * (def.amount / 100)
+    return 0
+  }
+  const groupSpan = 1 + addonDefs.length
+
+  let html = `<h2 style="margin:20px 0 10px;font-size:18px">
+    ${prod.label} — ${size}
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup · base + each add-on</span>
+  </h2>`
+
+  html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
+    <thead>
+      <tr>
+        <th rowspan="2">Product Name</th>
+        <th rowspan="2">Size</th>
+        ${otherKeys.map(k => `<th rowspan="2">${humanize(k)}</th>`).join('')}
+        <th rowspan="2">Qty</th>
+        <th rowspan="2">Finishing</th>
+        ${turnarounds.map(tn => `<th colspan="${groupSpan}" style="text-align:center">${config.globals.turnaround[tn]?.label || tn}</th>`).join('')}
+      </tr>
+      <tr>
+        ${turnarounds.map(() =>
+          `<th>Base</th>${addonDefs.map(a => `<th>+ ${a.def.label}</th>`).join('')}`
+        ).join('')}
+      </tr>
+    </thead>
+    <tbody>`
+
+  for (const r of rows) {
+    html += `<tr>
+      <td>${prod.label}</td>
+      <td>${r.specs.size}</td>
+      ${otherKeys.map(k => `<td>${formatKeyValue(prod, k, r.specs[k])}</td>`).join('')}
+      <td><strong>${r.qty}</strong></td>
+      <td>${config.globals.finishings[r.finishing]?.label || r.finishing}</td>
+      ${turnarounds.map(tn => {
+        const p = r.byTurnaround?.[tn]
+        if (!p) return `<td>—</td>${addonDefs.map(() => '<td>—</td>').join('')}`
+        const tnMul = config.globals.turnaround[tn]?.multiplier ?? 1
+        let cells = `<td><span class="sell">$${p.sellPrice}</span><br><span class="unit">$${p.unitSellPrice}/u</span></td>`
+        for (const a of addonDefs) {
+          const sell = p.sellPrice + addonDelta(a.def, r.qty, r.baseCost) * tnMul * markupMul
+          cells += `<td><span class="sell">$${sell.toFixed(2)}</span><br><span class="unit">$${(sell / r.qty).toFixed(2)}/u</span></td>`
+        }
+        return cells
       }).join('')}
     </tr>`
   }
