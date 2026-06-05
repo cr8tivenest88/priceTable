@@ -2158,8 +2158,7 @@
         }
       ],
       "allowed_addons": [
-        "grommet",
-        "h_stand"
+        "grommet"
       ],
       "allowed_finishings": [
         "no_finish",
@@ -2731,9 +2730,7 @@
           "prices": {}
         }
       ],
-      "allowed_addons": [
-        "grommet"
-      ],
+      "allowed_addons": [],
       "allowed_finishings": [
         "no_finish",
         "glossy_lam",
@@ -11766,7 +11763,6 @@
         "sameday",
         "1_hour"
       ],
-      "_lookupIndex": {},
       "option_multiplier_mode": {
         "paper_stock": "own"
       }

@@ -254,7 +254,9 @@ async function generate() {
     let merged = hasSize && size ? all.filter(r => r.specs.size === size) : all
     if (thickness) merged = merged.filter(r => r.specs.thickness === thickness)
 
-    result.innerHTML = renderTable(prod, merged, size, markup, sides, turnarounds)
+    const note = derivationSummaryHtml(prod)
+    const noteHtml = note ? `<div class="note" style="margin:0 0 4px">${note}</div>` : ''
+    result.innerHTML = noteHtml + renderTable(prod, merged, size, markup, sides, turnarounds)
   } catch (e) {
     result.innerHTML = `<p style="color:var(--danger);padding:16px">${e.message}</p>`
   } finally {
@@ -733,6 +735,44 @@ function formatKeyValue(prod, key, value) {
   return String(value)
 }
 
+// Lookup dimensions priced in "anchor" mode (e.g. booklets `cover`): only the
+// anchor value (multiplier 1) is hand-priced; the others derive as anchor ×
+// their multiplier. Mirrors engine.js optionMultipliers. Returns
+// [{ key, anchorLabel, derived:[{label, multiplier}] }]; empty when none.
+function anchorMultiplierDims(prod) {
+  const modes = prod.option_multiplier_mode || {}
+  const out = []
+  for (const key of prod.lookup_keys || []) {
+    const opts = prod.options?.[key]
+    if (!Array.isArray(opts) || !opts.some(o => o && typeof o === 'object' && o.multiplier != null)) continue
+    if ((modes[key] || 'anchor') === 'own') continue
+    const anchorOpt = opts.find(o => o && typeof o === 'object' && Number(o.multiplier) === 1) || opts[0]
+    const anchorLabel = typeof anchorOpt === 'object' ? (anchorOpt.label || anchorOpt.key) : anchorOpt
+    const derived = opts
+      .filter(o => o !== anchorOpt && typeof o === 'object' && o.multiplier != null && Number(o.multiplier) !== 1)
+      .map(o => ({ label: o.label || o.key, multiplier: Number(o.multiplier) }))
+    out.push({ key, anchorLabel, derived })
+  }
+  return out
+}
+
+// One human sentence describing what auto-derives for this product — page
+// counts (page slope), anchor-mode option multipliers (e.g. cover), and qty
+// interpolation. Used for the explanatory notes on the Price Table + Prices
+// tabs. Returns '' when nothing derives.
+function derivationSummaryHtml(prod) {
+  const bits = []
+  const ps = prod.pages_slope
+  if (ps) bits.push(`page counts other than <strong>${ps.anchor_pages}pg</strong> scale from the ${ps.anchor_pages}pg price via the page slope`)
+  for (const d of anchorMultiplierDims(prod)) {
+    if (!d.derived.length) continue
+    const list = d.derived.map(x => `${x.label} ×${x.multiplier}`).join(', ')
+    bits.push(`${humanize(d.key).toLowerCase()}s other than <strong>${d.anchorLabel}</strong> derive from it (${list})`)
+  }
+  if (!bits.length) return ''
+  return `Prices here are auto-calculated — ${bits.join('; ')}. In-between quantities are interpolated between the entered break points.`
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PRICES TAB — edit price tables for one size at a time
 // ─────────────────────────────────────────────────────────────────────────────
@@ -757,6 +797,7 @@ function initPrices() {
     bar.appendChild(btn)
   })
   document.getElementById('pr-save').addEventListener('click', savePrices)
+  document.getElementById('pr-save-top').addEventListener('click', savePrices)
   if (entries.length) selectPricesProduct(entries[0][0])
 }
 
@@ -829,13 +870,17 @@ function renderPricesGrid() {
   if (!sizes.length) { grid.innerHTML = '<p style="color:var(--muted);padding:16px">No sizes defined yet — add some in the Products tab.</p>'; return }
 
   const ps = prod.pages_slope
+  const amDims = anchorMultiplierDims(prod).filter(d => d.derived.length)
   let html = ''
-  if (ps) {
-    html += `<div class="note" style="margin-bottom:12px">
-      Only the <strong>${ps.anchor_pages}-page</strong> rows are editable. Other page counts (shown greyed) are
-      <strong>calculated</strong> from the ${ps.anchor_pages}pg price via the page slope —
-      change the percentages in the <strong>Products</strong> tab.
-    </div>`
+  if (ps || amDims.length) {
+    const parts = []
+    if (ps) parts.push(`Only the <strong>${ps.anchor_pages}-page</strong> rows are editable — other page counts (shown greyed) are <strong>calculated</strong> from the ${ps.anchor_pages}pg price via the page slope.`)
+    for (const d of amDims) {
+      const list = d.derived.map(x => `${x.label} ×${x.multiplier}`).join(', ')
+      parts.push(`Only the <strong>${d.anchorLabel}</strong> ${humanize(d.key).toLowerCase()} needs pricing — ${list} are <strong>calculated</strong> from it, so don't hand-key those rows.`)
+    }
+    parts.push(`Change the percentages / multipliers in the <strong>Products</strong> tab.`)
+    html += `<div class="note" style="margin-bottom:12px">${parts.join(' ')}</div>`
   }
   for (const size of sizes) {
     const sizeRows = (prod.price_table || []).filter(r => r.key.size === size)
@@ -855,6 +900,11 @@ function renderPricesGrid() {
 
     for (const row of sizeRows) {
       const idx = prod.price_table.indexOf(row)
+      const derivedRow = ps && Number(row.key.pages) !== ps.anchor_pages
+      // Hide fully-blank derived rows: a derived page row whose anchor sibling
+      // has no price would render as all "—". Skipping them keeps the editor to
+      // the rows that actually carry (or need) data instead of a wall of dashes.
+      if (derivedRow && qtys.every(q => derivedPagePrice(prod, row, q) == null)) continue
       html += `<tr>`
       for (const k of otherKeys) {
         const v = row.key[k]
@@ -862,7 +912,6 @@ function renderPricesGrid() {
         const label = opt && typeof opt === 'object' ? opt.label : v
         html += `<td class="row-key">${label}</td>`
       }
-      const derivedRow = ps && Number(row.key.pages) !== ps.anchor_pages
       for (const q of qtys) {
         if (derivedRow) {
           const d = derivedPagePrice(prod, row, q)
