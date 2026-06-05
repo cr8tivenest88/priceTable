@@ -1526,6 +1526,24 @@ function editorLookup(prod) {
     </div>
   </div>`
 
+  // Allowed add-ons — when undefined, treat as "all on" (legacy default) so the
+  // user sees the current effective state and can untick. Ticked add-ons show as
+  // extra price columns when the price table is generated.
+  const adList = prod.allowed_addons || Object.keys(config.globals.addons)
+  html += `<div class="editor-section">
+    <h3>Allowed Add-ons
+      <button class="btn-secondary btn-sm" style="margin-left:12px" onclick="toggleAllChecks('prod-addons', true)">All</button>
+      <button class="btn-secondary btn-sm" onclick="toggleAllChecks('prod-addons', false)">None</button>
+    </h3>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:6px">
+      Tick the add-ons this product can take. Ticked add-ons appear as extra price columns when you generate the price table.
+    </p>
+    <div class="checkbox-grid" id="prod-addons">
+      ${Object.entries(config.globals.addons).map(([k, v]) =>
+        `<label><input type="checkbox" value="${k}" ${adList.includes(k) ? 'checked' : ''}/> ${v.label}</label>`).join('')}
+    </div>
+  </div>`
+
   // Allowed finishings — same logic
   const finList = prod.allowed_finishings || Object.keys(config.globals.finishings)
   html += `<div class="editor-section">
