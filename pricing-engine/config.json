@@ -855,7 +855,6 @@
         }
       ],
       "allowed_addons": [
-        "double_sided",
         "Cut_out"
       ],
       "allowed_finishings": [
