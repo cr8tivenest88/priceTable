@@ -585,6 +585,21 @@ app.post('/api/export-xlsx', (req, res) => {
       }
       const finLabel = k => config.globals.finishings[k]?.label || k
 
+      // Add-on columns mirror the on-screen Price Table: one Line/Unit pair per
+      // add-on under each turnaround. `double_sided` is excluded — it's driven by
+      // the Sides dropdown and already baked into the base price.
+      const addonDefs = (productCfg.allowed_addons || [])
+        .filter(k => k !== 'double_sided' && config.globals.addons[k])
+        .map(k => ({ key: k, def: config.globals.addons[k] }))
+      const markupMul = 1 + markup / 100
+      const addonDelta = (def, qty, baseCost) => {
+        if (def.type === 'flat')        return def.amount
+        if (def.type === 'flat_per_pc') return def.amount * qty
+        if (def.type === 'pct_of_base') return (baseCost || 0) * (def.amount / 100)
+        return 0
+      }
+      const round2 = n => Math.round(n * 100) / 100
+
       const data = rowsArr.map(r => {
         const row = { 'Product Name': productCfg.label, Size: r.specs.size }
         for (const k of otherKeys) {
@@ -596,6 +611,17 @@ app.post('/api/export-xlsx', (req, res) => {
           const p = r.byTurnaround[tn]
           row[`${tnLabel(tn)} (Line $)`] = p?.sellPrice ?? ''
           row[`${tnLabel(tn)} ($/u)`]    = p?.unitSellPrice ?? ''
+          const tnMul = config.globals.turnaround[tn]?.multiplier ?? 1
+          for (const a of addonDefs) {
+            if (p) {
+              const sell = p.sellPrice + addonDelta(a.def, r.qty, r.baseCost) * tnMul * markupMul
+              row[`${tnLabel(tn)} +${a.def.label} (Line $)`] = round2(sell)
+              row[`${tnLabel(tn)} +${a.def.label} ($/u)`]    = round2(sell / r.qty)
+            } else {
+              row[`${tnLabel(tn)} +${a.def.label} (Line $)`] = ''
+              row[`${tnLabel(tn)} +${a.def.label} ($/u)`]    = ''
+            }
+          }
         }
         return row
       })

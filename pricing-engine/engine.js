@@ -155,7 +155,7 @@ function generateAllCombosMulti({ product, markup = 0, sides = null }) {
         const match = (perTn[tn] || []).find(x => keyOf(x) === keyOf(r))
         if (match) byTurnaround[tn] = { sellPrice: match.sellPrice, unitSellPrice: match.unitSellPrice }
       }
-      return { specs: r.specs, qty: r.qty, finishing: r.finishing, byTurnaround }
+      return { specs: r.specs, qty: r.qty, finishing: r.finishing, baseCost: r.baseCost, byTurnaround }
     })
   }
 
@@ -189,6 +189,9 @@ function generateAllCombosMulti({ product, markup = 0, sides = null }) {
       specs:     r.specs,
       qty:       r.qty,
       finishing: r.finishing,
+      // Raw base cost (unit × qty, or line total) — excludes add-ons/finishing/
+      // turnaround/markup. The client uses it to price pct_of_base add-ons.
+      baseCost:  r.baseCost,
       byTurnaround,
     }
   })
