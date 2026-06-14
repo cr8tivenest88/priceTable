@@ -295,7 +295,7 @@
           ]
         },
         {
-          "label": "Coroplast 10mm n",
+          "label": "Coroplast 10mm",
           "material_name": "coroplast_10mm_n",
           "rates": [
             {
@@ -336,7 +336,7 @@
         "sameday",
         "1_hour"
       ],
-      "markup": 100
+      "markup": 185
     },
     "foamcore": {
       "label": "Foamcore_4mm",
