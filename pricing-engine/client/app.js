@@ -510,7 +510,7 @@ function renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds)
   return html
 }
 
-// NCR price table: no finishing, one mini-table per turnaround, add-on combo columns
+// NCR price table: one mini-table per turnaround, Finishing column + add-on combo columns
 function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
   if (!rows.length) {
     return `<h2 style="margin:20px 0 10px;font-size:18px">${prod.label}</h2>
@@ -543,11 +543,14 @@ function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
     return total
   }
 
-  // Sort rows: size → variant → qty
+  // Sort rows: size → variant → finishing → qty
   rows.sort((a, b) =>
     String(a.specs.size).localeCompare(String(b.specs.size)) ||
     String(a.specs.variant).localeCompare(String(b.specs.variant)) ||
+    String(a.finishing).localeCompare(String(b.finishing)) ||
     a.qty - b.qty)
+
+  const finishingLabel = k => config.globals.finishings[k]?.label || k
 
   let html = `<h2 style="margin:20px 0 10px;font-size:18px">
     ${prod.label}
@@ -567,6 +570,7 @@ function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
         <th>Product Name</th>
         <th>Size</th>
         <th>Variant</th>
+        <th>Finishing</th>
         <th>Qty</th>
         ${combos.map(c => `<th>${comboLabel(c)}</th>`).join('')}
       </tr></thead><tbody>`
@@ -583,6 +587,7 @@ function renderNcrPriceTable(prod, rows, size, markup, turnarounds) {
         <td>${prod.label}</td>
         <td>${r.specs.size}</td>
         <td>${variantLabel(r.specs.variant)}</td>
+        <td>${finishingLabel(r.finishing)}</td>
         <td><strong>${r.qty}</strong></td>`
       for (const combo of combos) {
         const addonDelta = addonCostFor(combo, r.qty)

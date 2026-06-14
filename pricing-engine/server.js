@@ -546,20 +546,22 @@ app.post('/api/export-xlsx', (req, res) => {
         return v && typeof v === 'object' ? v.label : k
       }
 
+      const finLabel = k => config.globals.finishings[k]?.label || k
       const rowsArr = generateAllCombosMulti({ product, markup })
       for (const tn of turnarounds) {
         const tnMul = config.globals.turnaround[tn]?.multiplier ?? 1
-        const header = ['Product Name', 'Size', 'Variant', 'Qty', ...combos.map(comboLabel)]
+        const header = ['Product Name', 'Size', 'Variant', 'Finishing', 'Qty', ...combos.map(comboLabel)]
         const aoa = [header]
         const sorted = [...rowsArr].sort((a, b) =>
           String(a.specs.size).localeCompare(String(b.specs.size)) ||
           String(a.specs.variant).localeCompare(String(b.specs.variant)) ||
+          String(a.finishing).localeCompare(String(b.finishing)) ||
           a.qty - b.qty)
         for (const r of sorted) {
           const basePrice = r.byTurnaround?.[tn]?.sellPrice
           if (basePrice == null) continue
           const baseSubtotal = basePrice / tnMul / markupMul
-          const row = [productCfg.label, r.specs.size, variantLabel(r.specs.variant), r.qty]
+          const row = [productCfg.label, r.specs.size, variantLabel(r.specs.variant), finLabel(r.finishing), r.qty]
           for (const combo of combos) {
             const delta = addonCostFor(combo, r.qty)
             const newSell = (baseSubtotal + delta) * tnMul * markupMul
