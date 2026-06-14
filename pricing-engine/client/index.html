@@ -60,9 +60,6 @@
         <button class="nav-btn" data-tab="globals">Globals</button>
         <button class="nav-btn" data-tab="backups">Backups</button>
       </nav>
-      <div style="margin-top:auto;padding:16px;border-top:1px solid #2d3f55">
-        <button class="nav-btn" id="reload-btn" style="width:100%;background:var(--accent);color:#fff;border-radius:6px;padding:10px;font-weight:600">↻ Clear Cache & Reload</button>
-      </div>
     </aside>
 
     <main class="main">
@@ -92,13 +89,6 @@
             <div class="field" id="pt-thickness-field" style="display:none">
               <label>Thickness</label>
               <select id="pt-thickness"></select>
-            </div>
-            <div class="field">
-              <label>Sides</label>
-              <select id="pt-sides">
-                <option value="1">1 — Single-Sided</option>
-                <option value="2">2 — Double-Sided</option>
-              </select>
             </div>
             <div class="field">
               <label>Markup %</label>
@@ -151,6 +141,7 @@
               </div>
             </div>
             <div id="prod-editor-body"></div>
+            <div style="margin-top:12px"><button class="btn-primary" id="prod-save-bottom">Save</button></div>
           </div>
           <div class="prod-empty" id="prod-empty">
             <div>👈 Pick a product to edit</div>
@@ -180,6 +171,7 @@
               </div>
             </div>
             <div id="lf-editor-body"></div>
+            <div style="margin-top:12px"><button class="btn-primary" id="lf-save-bottom">Save</button></div>
           </div>
           <div class="prod-empty" id="lf-empty">
             <div>👈 Pick a Large Format product to edit (or click + New)</div>
@@ -247,6 +239,7 @@
             <li><strong>Flat Cost</strong> is a one-time charge per order; <strong>Per Unit</strong> is applied per piece.</li>
           </ul>
         </div>
+        <div style="margin-bottom:12px"><button class="btn-primary" id="finishings-save-top">Save Finishings</button></div>
         <div id="finishings-body"></div>
         <button class="btn-primary" id="finishings-save">Save Finishings</button>
       </section>
@@ -254,6 +247,7 @@
       <!-- ── GLOBALS TAB ── -->
       <section id="tab-globals" class="tab">
         <h1>Globals</h1>
+        <div style="margin-bottom:12px"><button class="btn-primary" id="globals-save-top">Save Globals</button></div>
         <div id="globals-body"></div>
         <button class="btn-primary" id="globals-save">Save Globals</button>
       </section>

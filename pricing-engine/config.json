@@ -2157,7 +2157,9 @@
         }
       ],
       "allowed_addons": [
-        "grommet"
+        "grommet",
+        "double_sided",
+        "Cut_out"
       ],
       "allowed_finishings": [
         "no_finish",
@@ -2729,7 +2731,9 @@
           "prices": {}
         }
       ],
-      "allowed_addons": [],
+      "allowed_addons": [
+        "double_sided"
+      ],
       "allowed_finishings": [
         "no_finish",
         "glossy_lam",

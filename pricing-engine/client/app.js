@@ -83,7 +83,11 @@ async function api(method, url, body) {
 
 async function saveConfig() {
   await api('PUT', '/api/config', config)
-  toast('Saved')
+  // Every successful save clears caches + service workers and hard-reloads, so
+  // the page always comes back with the freshly-saved config (replaces the
+  // manual "Clear Cache & Reload" button).
+  toast('Saved — reloading…')
+  await hardReload()
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
@@ -96,7 +100,6 @@ function initNav() {
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active')
     })
   })
-  document.getElementById('reload-btn')?.addEventListener('click', hardReload)
 }
 
 async function hardReload() {
@@ -148,7 +151,6 @@ async function exportXlsx() {
   const key  = document.getElementById('pt-product').value
   const prod = config.products[key]
   const markup = parseFloat(document.getElementById('pt-markup').value) || 0
-  const sides  = parseInt(document.getElementById('pt-sides').value) || 1
   const size = document.getElementById('pt-size').value
   const expBtn = document.getElementById('pt-export')
   expBtn.disabled = true
@@ -157,14 +159,14 @@ async function exportXlsx() {
     const res = await fetch('/api/export-xlsx', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ product: key, size, sides, markup }),
+      body: JSON.stringify({ product: key, size, markup }),
     })
     if (!res.ok) throw new Error((await res.json()).error || res.statusText)
     const blob = await res.blob()
     const url  = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${prod.label}-${size}-${sides}sided.xlsx`.replace(/[^a-z0-9.-]+/gi, '_')
+    a.download = `${prod.label}-${size}.xlsx`.replace(/[^a-z0-9.-]+/gi, '_')
     document.body.appendChild(a); a.click()
     a.remove(); URL.revokeObjectURL(url)
     toast('Downloaded')
@@ -232,7 +234,11 @@ async function generate() {
   const key = document.getElementById('pt-product').value
   const prod = config.products[key]
   const markup = parseFloat(document.getElementById('pt-markup').value) || 0
-  const sides  = parseInt(document.getElementById('pt-sides').value) || 1
+  // Sides is no longer a builder control. The table is always generated
+  // single-sided; double-sided is surfaced as a `double_sided` add-on column,
+  // so we filter out the generated 2-sided rows/variants (sides=1) to avoid
+  // showing them twice.
+  const sides  = 1
   const result = document.getElementById('pt-result')
   const genBtn = document.getElementById('pt-generate')
   const expBtn = document.getElementById('pt-export')
@@ -299,10 +305,10 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
 
   // Products with allowed add-ons get extra price columns (one per add-on,
   // grouped under each turnaround) so the generated table shows add-on pricing.
-  // `double_sided` is excluded — it's driven by the Sides dropdown and already
-  // baked into the base price, so a column would double-count it.
+  // `double_sided` is a normal add-on column now that the Sides dropdown is gone
+  // and the base is never silently upgraded to double-sided.
   const addonCols = (prod.allowed_addons || [])
-    .filter(k => k !== 'double_sided' && config.globals.addons[k])
+    .filter(k => config.globals.addons[k])
   if (addonCols.length) {
     return renderLookupAddonTable(prod, rows, size, markup, sides, turnarounds, otherKeys, addonCols)
   }
@@ -316,7 +322,7 @@ function renderTable(prod, rows, size, markup, sides, turnarounds) {
 
   let html = `<h2 style="margin:20px 0 10px;font-size:18px">
     ${prod.label} — ${size}
-    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup</span>
   </h2>`
 
   html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
@@ -376,7 +382,7 @@ function renderLookupAddonTable(prod, rows, size, markup, sides, turnarounds, ot
 
   let html = `<h2 style="margin:20px 0 10px;font-size:18px">
     ${prod.label} — ${size}
-    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup · base + each add-on</span>
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup · base + each add-on</span>
   </h2>`
 
   html += `<div class="card" style="padding:0;overflow:hidden"><div class="price-table-wrap"><table>
@@ -456,7 +462,7 @@ function renderCoroplastPriceTable(prod, rows, size, markup, sides, turnarounds)
 
   let html = `<h2 style="margin:20px 0 10px;font-size:18px">
     ${prod.label} — ${size}
-    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup</span>
   </h2>`
 
   for (const tn of turnarounds) {
@@ -688,7 +694,7 @@ function renderEmptyStructure(prod, otherKeys, size, markup, sides, turnarounds)
 
   let html = `<h2 style="margin:20px 0 10px;font-size:18px">
     ${prod.label} — ${size}
-    <span style="color:var(--muted);font-size:12px;font-weight:400">${sides}-sided · ${markup}% markup</span>
+    <span style="color:var(--muted);font-size:12px;font-weight:400">${markup}% markup</span>
   </h2>`
 
   html += `<div class="note" style="background:#fef3c7;border-left:3px solid #f59e0b">
@@ -798,6 +804,16 @@ function initPrices() {
   })
   document.getElementById('pr-save').addEventListener('click', savePrices)
   document.getElementById('pr-save-top').addEventListener('click', savePrices)
+  // Keep each row's "qty × per-piece" total cell in sync while the user types.
+  document.getElementById('pr-grid').addEventListener('input', e => {
+    const inp = e.target
+    if (!inp.matches || !inp.matches('input[data-pr-row]')) return
+    const cell = document.querySelector(
+      `#pr-grid .pr-total-cell[data-total-row="${inp.dataset.prRow}"][data-total-qty="${inp.dataset.prQty}"]`)
+    if (!cell) return
+    const v = parseFloat(inp.value)
+    cell.textContent = isNaN(v) ? '' : '$' + (v * Number(inp.dataset.prQty)).toFixed(2)
+  })
   if (entries.length) selectPricesProduct(entries[0][0])
 }
 
@@ -919,6 +935,18 @@ function renderPricesGrid() {
         } else {
           html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
         }
+      }
+      html += `</tr>`
+      // Read-only row beneath each: qty × per-piece = the extended order total
+      // for that break point. Updates live as the per-piece input changes.
+      html += `<tr class="pr-total-row">`
+      if (otherKeys.length)
+        html += `<td colspan="${otherKeys.length}" style="font-size:11px;color:var(--muted);background:#f8fafc;text-align:right;padding-right:8px">qty × per-piece</td>`
+      for (const q of qtys) {
+        let per = derivedRow ? derivedPagePrice(prod, row, q)
+                             : (row.prices[q] == null ? null : Number(row.prices[q]))
+        const total = (per == null || isNaN(per)) ? '' : '$' + (per * q).toFixed(2)
+        html += `<td class="pr-total-cell" data-total-row="${idx}" data-total-qty="${q}" style="font-size:11px;color:var(--muted);background:#f8fafc;text-align:center">${total}</td>`
       }
       html += `</tr>`
     }
@@ -1145,6 +1173,7 @@ function savePrices() {
 function initProducts() {
   renderProductList()
   document.getElementById('prod-save').addEventListener('click', saveProduct)
+  document.getElementById('prod-save-bottom')?.addEventListener('click', saveProduct)
 }
 
 function renderProductList() {
@@ -1944,6 +1973,7 @@ function saveProduct() {
 function initFinishings() {
   renderFinishings()
   document.getElementById('finishings-save').addEventListener('click', saveFinishings)
+  document.getElementById('finishings-save-top')?.addEventListener('click', saveFinishings)
 }
 
 function renderFinishings() {
@@ -2021,6 +2051,7 @@ function saveFinishings() {
 function initGlobals() {
   renderGlobals()
   document.getElementById('globals-save').addEventListener('click', saveGlobals)
+  document.getElementById('globals-save-top')?.addEventListener('click', saveGlobals)
 }
 
 function renderGlobals() {
@@ -2535,6 +2566,7 @@ function formatDiffVal(v) {
 function initLargeFormat() {
   renderLargeFormatList()
   document.getElementById('lf-save').addEventListener('click', saveLargeFormat)
+  document.getElementById('lf-save-bottom')?.addEventListener('click', saveLargeFormat)
   document.getElementById('lf-add-product').addEventListener('click', addLargeFormatProduct)
   document.getElementById('lf-duplicate').addEventListener('click', duplicateLargeFormatProduct)
 }
@@ -3081,9 +3113,9 @@ async function saveLargeFormat() {
   captureLfEdits()
   try {
     await api('PUT', '/api/largeformat-config', lfConfig)
-    toast('Saved')
-    renderLargeFormatList()
-    if (currentLfKey) openLargeFormat(currentLfKey)
+    // Match saveConfig: clear caches + hard-reload so the saved config is live.
+    toast('Saved — reloading…')
+    await hardReload()
   } catch (e) {
     toast(e.message, 'err')
   }

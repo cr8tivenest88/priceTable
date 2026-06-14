@@ -586,10 +586,10 @@ app.post('/api/export-xlsx', (req, res) => {
       const finLabel = k => config.globals.finishings[k]?.label || k
 
       // Add-on columns mirror the on-screen Price Table: one Line/Unit pair per
-      // add-on under each turnaround. `double_sided` is excluded — it's driven by
-      // the Sides dropdown and already baked into the base price.
+      // add-on under each turnaround. `double_sided` is a normal add-on column now
+      // that the Sides dropdown is gone and the base is never auto-upgraded.
       const addonDefs = (productCfg.allowed_addons || [])
-        .filter(k => k !== 'double_sided' && config.globals.addons[k])
+        .filter(k => config.globals.addons[k])
         .map(k => ({ key: k, def: config.globals.addons[k] }))
       const markupMul = 1 + markup / 100
       const addonDelta = (def, qty, baseCost) => {
@@ -638,7 +638,7 @@ app.post('/api/export-xlsx', (req, res) => {
     }
 
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
-    const safeName = `${productCfg.label}${size ? '-' + size : ''}-${sides || 1}sided.xlsx`
+    const safeName = `${productCfg.label}${size ? '-' + size : ''}.xlsx`
       .replace(/[^a-z0-9.-]+/gi, '_')
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`)
