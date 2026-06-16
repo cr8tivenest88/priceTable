@@ -809,16 +809,6 @@ function initPrices() {
   })
   document.getElementById('pr-save').addEventListener('click', savePrices)
   document.getElementById('pr-save-top').addEventListener('click', savePrices)
-  // Keep each row's "qty × per-piece" total cell in sync while the user types.
-  document.getElementById('pr-grid').addEventListener('input', e => {
-    const inp = e.target
-    if (!inp.matches || !inp.matches('input[data-pr-row]')) return
-    const cell = document.querySelector(
-      `#pr-grid .pr-total-cell[data-total-row="${inp.dataset.prRow}"][data-total-qty="${inp.dataset.prQty}"]`)
-    if (!cell) return
-    const v = parseFloat(inp.value)
-    cell.textContent = isNaN(v) ? '' : '$' + (v * Number(inp.dataset.prQty)).toFixed(2)
-  })
   if (entries.length) selectPricesProduct(entries[0][0])
 }
 
@@ -940,18 +930,6 @@ function renderPricesGrid() {
         } else {
           html += `<td><input type="number" step="0.01" data-pr-row="${idx}" data-pr-qty="${q}" value="${row.prices[q] ?? ''}" /></td>`
         }
-      }
-      html += `</tr>`
-      // Read-only row beneath each: qty × per-piece = the extended order total
-      // for that break point. Updates live as the per-piece input changes.
-      html += `<tr class="pr-total-row">`
-      if (otherKeys.length)
-        html += `<td colspan="${otherKeys.length}" style="font-size:11px;color:var(--muted);background:#f8fafc;text-align:right;padding-right:8px">qty × per-piece</td>`
-      for (const q of qtys) {
-        let per = derivedRow ? derivedPagePrice(prod, row, q)
-                             : (row.prices[q] == null ? null : Number(row.prices[q]))
-        const total = (per == null || isNaN(per)) ? '' : '$' + (per * q).toFixed(2)
-        html += `<td class="pr-total-cell" data-total-row="${idx}" data-total-qty="${q}" style="font-size:11px;color:var(--muted);background:#f8fafc;text-align:center">${total}</td>`
       }
       html += `</tr>`
     }
